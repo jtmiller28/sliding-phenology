@@ -8,4 +8,46 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+### Assessing the Data's temporal distribution in order to inform phenology analysis 
+Load Libraries
+```{r}
+library(data.table)
+library(lubridate)
+library(ggplot2)
+```
+Bring in the Sonoran Flowering Data (cleaned in data-cleaning.Rmd)
+```{r}
+sonoran_flowering_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
+```
+
+Parse out year month day and day of year (doy) fields
+```{r}
+sfd <- sonoran_flowering_data[, year := year(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+sfd <- sonoran_flowering_data[, month := month(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+sfd <- sonoran_flowering_data[, day := day(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+sfd <- sonoran_flowering_data[, doy := yday(as.POSIXlt.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+
+sfd[, (.N), by = "year"] # Looks like very few records prior to the 2000s, ask Rob but as an arbitrary cut off lets go from there
+sfd <- sonoran_flowering_data[year >= 2000]
+```
+
+First, phenology density mapping over full time scale 
+```{r}
+ggplot(sfd, aes(x = year)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  labs(title = "Density Time Series of Observations per Year",
+       x = "Year",
+       y = "Density") +
+  theme_minimal()
+
+ggplot(sfd, aes(x = factor(year))) +
+  geom_bar(fill = "skyblue") +
+  labs(title = "Number of Records per Year",
+       x = "Year",
+       y = "Density") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
 

@@ -53,17 +53,29 @@ flowering_data_sf <- st_as_sf(flowering_data,
 # Bring in Ecoregion shapefiles 
 na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
 
-# Filter for just the Sonoran Desert 
+# Filter for just the Sonoran Desert & Mojave
 sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+mojave_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Mojave Basin and Range")
+# Filter for just the Sonoran Desert 
+desert_shps <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME %in% c("Sonoran Desert", "Mojave Basin and Range"))
 
 # Convert the crs of the inat data to that of the sonoran shapefile
 flowering_data_sf <- flowering_data_sf %>% 
-  st_transform(crs = st_crs(sonoran_shp))
+  #st_transform(crs = st_crs(sonoran_shp))
+  st_transform(crs = st_crs(desert_shps))
 
 # And filter the data to be only within the sonoran shp boundary 
 flowering_sonoran_data <- flowering_data_sf[sonoran_shp, ]
+flowering_sonoran_data <- flowering_sonoran_data[, ecoregion := "Sonoran Desert"]
+flowering_mojave_data <- flowring_data_sf[mojave_shp, ]
+flowering_mojave_data <- flowering_mojave_data[, ecoregion := "Mojave Basin and Range"]
+
+
 
 nrow(flowering_sonoran_data)
+nrow(flowering_mojave_data)
+
+flowering_desert_data <- 
 
 ```
 
@@ -75,7 +87,7 @@ flowering_sonoran_data <- flowering_sonoran_data %>%
 
 class(flowering_sonoran_data)
 
-fwrite(flowering_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
+#fwrite(flowering_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
 ```
 
 
