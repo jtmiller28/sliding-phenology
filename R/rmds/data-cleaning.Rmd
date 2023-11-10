@@ -1,0 +1,81 @@
+---
+title: "data-cleaning"
+author: "jt-miller"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Clean Phenobase Data 
+```{r}
+library(data.table)
+library(sf)
+```
+Bring in the phenobase data
+```{r}
+pheno_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/phenobase-observations-dwca/observations.csv")
+```
+Identify Fields that will need to be filtered down for our questions about flowering phenology
+```{r}
+check <- head(pheno_data) # Make it easier to look at the data as a snapshot
+unique(pheno_data$datasetName) # Filter for "iNaturanlist research-grade observations"
+research_grade_string <- "iNaturalist research-grade observations"
+unique(pheno_data$captive) # Filter cultivated
+unique(pheno_data$informationWithheld)
+wild_string <- "wild"
+unique(pheno_data$geodeticDatum) # All good here
+unique(pheno_data$reproductiveCondition) # for our purposes we'll want to remove
+non_repoductive_vec <- c("flower budding", "no evidence of flowering", "fruiting", "fruiting|flower budding", "fruiting|no evidence of flowering", "flowering|no evidence of flowering") # Not sure what the last one means, ask Rob. 
+
+# Select Fields of interest, and filter data accordingly 
+
+flowering_data <- pheno_data[, .(id, occurrenceID, datasetName, informationWithheld, recordedBy, recordedByID, identifiedBy, identifiedByID, captive, eventDate, eventTime, verbatimEventDate, verbatimLocality, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, identificationID, scientificName, taxonRank, reproductiveCondition)] # Select a subset of fields of interest
+
+flowering_data <- flowering_data[datasetName == research_grade_string]
+flowering_data <- flowering_data[captive == wild_string]
+flowering_data <- flowering_data[!reproductiveCondition %in% non_repoductive_vec]
+
+flowering_data <- flowering_data[!is.na(decimalLongitude)]
+flowering_data <- flowering_data[!is.na(decimalLatitude)]
+```
+
+Spatially subset our data to include only that of the EPA's level 3 Sonoran Ecoregion to localize the analysis 
+```{r}
+# Make our inat data spatial 
+flowering_data_sf <- st_as_sf(flowering_data, 
+                              coords = c("decimalLongitude", "decimalLatitude"),
+                              crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
+                              remove = FALSE)
+
+# Bring in Ecoregion shapefiles 
+na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
+
+# Filter for just the Sonoran Desert 
+sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+
+# Convert the crs of the inat data to that of the sonoran shapefile
+flowering_data_sf <- flowering_data_sf %>% 
+  st_transform(crs = st_crs(sonoran_shp))
+
+# And filter the data to be only within the sonoran shp boundary 
+flowering_sonoran_data <- flowering_data_sf[sonoran_shp, ]
+
+nrow(flowering_sonoran_data)
+
+```
+
+Write the processed flowering records out to a file to work with later
+```{r}
+# Drop spatial status 
+flowering_sonoran_data <- flowering_sonoran_data %>% 
+  st_drop_geometry()
+
+class(flowering_sonoran_data)
+
+fwrite(flowering_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
+```
+
+

@@ -1,0 +1,11 @@
+---
+title: "time-binning"
+author: "jt-miller"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
