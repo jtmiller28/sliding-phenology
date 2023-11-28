@@ -16,54 +16,83 @@ library(lubridate)
 library(ggplot2)
 library(dplyr)
 ```
-Bring in the Sonoran Flowering Data (cleaned in data-cleaning.Rmd)
+Bring in the Sonoran Flowering Data & Bee Data (cleaned in data-cleaning.Rmd)
 ```{r}
 sonoran_flowering_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
 cch2_fl_sonoran_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/cch2_fl_sonoran_data.csv")
+sonoran_bee_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/bee_occ_sonoran_data.csv")
 ```
 
-Merge Datasets 
+Merge Flowering Datasets 
 ```{r}
 # Add a field denoting aggregator
 sfd <- sonoran_flowering_data[, aggregator := "inat"] 
 cch2 <- cch2_fl_sonoran_data[, aggregator := "cch2"]
 
 # Assure correct date class in the cch2 data
-cch2$eventDate <- as.Date(cch2$eventDate)
+cch2$eventDate <- as.POSIXct(cch2$eventDate, format = "%Y-%m-%d")
+#cch2$eventDate <- as.Date(cch2$eventDate)
 
-fl_data <- bind_rows(sfd, cch2) # dplyr function that rbinds the data, and replaces NAs for fields missing from eachothers dataset
+fl_data <- bind_rows(sfd, cch2) # dplyr function that rbinds the data, and replaces NAs for fields missing from eachothers dataset 
+
+bd <- sonoran_bee_data # rename for simplicity 
 ```
 
 
 Parse out year month day and day of year (doy) fields
 ```{r}
-fld <- fl_data[, year := year(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
-fld <- fl_data[, month := month(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
-fld <- fl_data[, day := day(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
-fld <- fl_data[, doy := yday(as.POSIXlt.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+# Create new temporal fields for flowering plants 
+fld <- fl_data[, year := year(as.POSIXct(eventDate, format = "%Y-%m-%d"))]
+fld <- fld[, month := month(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+fld <- fld[, day := day(as.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
+fld <- fld[, doy := yday(as.POSIXlt.POSIXct(eventDate, format = "%Y-%m-%d %H:%M:%S %Z"))]
 
+# Do the same thing for the bees
+bd$eventDate <- as.POSIXct(bd$eventDate, format = "%Y/%m/%d %H:%M:%S", tz = "UTC")
+bd <- bd[, c("year", "month", "day", "doy") := list(year(eventDate), month(eventDate), day(eventDate), yday(eventDate))] # Shortcut
 
-fld[, (.N), by = "year"] # Looks like very few records prior to the 2000s, ask Rob but as an arbitrary cut off lets go from there
+fld[, (.N), by = "year"] 
+bd[, (.N), by = "year"] 
 class(fld$year)
+class(bd$year)
 fld <- fld[year >= 1950]
+bd <- bd[year >= 1950]
 ```
 
 First, phenology density mapping over full time scale 
 ```{r}
+### For Plants 
 ggplot(fld, aes(x = year)) +
-  geom_density(fill = "skyblue", alpha = 0.5) +
-  labs(title = "Density Time Series of Observations per Year",
+  geom_density(fill = "darkgreen", alpha = 0.5) +
+  labs(title = "Density Time Series of Flowering Observations per Year",
        x = "Year",
        y = "Density") +
   theme_minimal()
 
 ggplot(fld, aes(x = factor(year))) +
-  geom_bar(fill = "skyblue") +
-  labs(title = "Number of Records per Year",
+  geom_bar(fill = "darkgreen") +
+  labs(title = "Number of Flowering Observations per Year",
        x = "Year",
-       y = "Density") +
+       y = "Count (N)") +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+### For Bees 
+ggplot(bd, aes(x=year)) + 
+  geom_density(fill = "darkorange", alpha = 0.5) + 
+  labs(title = "Density Time Series of Bee Observations per Year",
+       x = "Year", 
+       y = "Density") + 
+  theme_minimal()
+
+ggplot(bd, aes(x = factor(year))) +
+  geom_bar(fill = "darkorange") +
+  labs(title = "Number of Bee Observations per Year",
+       x = "Year",
+       y = "Count (N)") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
 ```
 
 

@@ -152,3 +152,58 @@ class(cch2_fl_sonoran_data)
 
 fwrite(cch2_fl_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/cch2_fl_sonoran_data.csv")
 ```
+### Now clean the bee data 
+
+Bring in the cleaned bee dataset produced in Dorey et al. 2023
+```{r}
+cleaned_bees_occur <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/Bee-Cleaned-Data/OutputData/05_cleaned_database.csv")
+```
+
+Check data for flags
+```{r}
+names(cleaned_bees_occur)
+```
+Usual cleaning for my research questions + make it spatial
+```{r}
+# Find fields of interest. 
+names(cleaned_bees_occur)
+bee_occ <- cleaned_bees_occur[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank)]
+
+# Remove data without eventDate
+bee_occ <- bee_occ[!is.na(eventDate)]
+
+# Remove data without lon lat 
+bee_occ <- bee_occ[!is.na(decimalLatitude)]
+bee_occ <- bee_occ[!is.na(decimalLongitude)]
+
+# Make our inat data spatial 
+bee_occ_sf <- st_as_sf(bee_occ,
+                              coords = c("decimalLongitude", "decimalLatitude"),
+                              crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
+                              remove = FALSE)
+
+# Bring in Ecoregion shapefiles 
+na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
+
+# Filter for just the Sonoran Desert & Mojave
+sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+
+# Convert the crs of the inat data to that of the sonoran shapefile
+bee_occ_sf <- bee_occ_sf %>% 
+  st_transform(crs = st_crs(sonoran_shp))
+
+# Trim
+bee_occ_sonoran_data <- bee_occ_sf[sonoran_shp, ]
+
+```
+
+Write the processed bee records out to a file to work with later
+```{r}
+# Drop spatial status 
+bee_occ_sonoran_data <- bee_occ_sonoran_data %>% 
+  st_drop_geometry()
+
+class(bee_occ_sonoran_data)
+
+fwrite(bee_occ_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/bee_occ_sonoran_data.csv")
+```
