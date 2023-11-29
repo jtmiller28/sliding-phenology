@@ -15,6 +15,8 @@ library(data.table)
 library(phenesse)
 library(sf)
 library(raster)
+library(dplyr)
+library(ggplot2)
 ```
 Read in the Data 
 ```{r}
@@ -124,7 +126,7 @@ grids_w_plants <- grids_w_plants %>%
   mutate(temp_cov_perc = sum(!is.na(unique(year)))/length(all_years)*100)
 # 
 ggplot(grids_w_bees) +
-  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.9)) + # Log Transform, correct for log10(1) = 0
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
     theme_bw() +
     scale_fill_gradientn(
       colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
@@ -138,19 +140,196 @@ ggplot(grids_w_bees) +
     guides(fill=guide_legend(title="% of all time for 1950-1972"))
 
 ggplot(grids_w_plants) +
-  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.9)) + # Log Transform, correct for log10(1) = 0
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
     theme_bw() +
     scale_fill_gradientn(
       colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
       na.value = "#808080" # The line that denotes NAs as grey
     ) +
      geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
-    ggtitle(paste0("Bee Observation Temporal Coverage")) +
+    ggtitle(paste0("Plant Observation Temporal Coverage")) +
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
     #ggtitle("Bee Sampling Intensity 10x10km Grid") +
     theme(plot.title = element_text(hjust = 0.5)) +
     guides(fill=guide_legend(title="% of all time for 1950-1972"))
 ```
+Retain cells with greater than or equal to 75% Temporal Coverage (Arbitrary, question for Rob & JM)
+```{r}
+# Filter for high coverage grid cells
+h_b_grids <- grids_w_bees %>% 
+  filter(temp_cov_perc >= 75)
+h_p_grids <- grids_w_plants %>% 
+  filter(temp_cov_perc >= 75)
+
+ggplot(h_b_grids) +
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
+    theme_bw() +
+    scale_fill_gradientn(
+      colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
+      na.value = "#808080" # The line that denotes NAs as grey
+    ) +
+     geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
+    ggtitle(paste0("Bee Observation Temporal Coverage for high temporal coverage cells")) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    #ggtitle("Bee Sampling Intensity 10x10km Grid") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+
+ggplot(h_p_grids) +
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
+    theme_bw() +
+    scale_fill_gradientn(
+      colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
+      na.value = "#808080" # The line that denotes NAs as grey
+    ) +
+     geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
+    ggtitle(paste0("Plant Observation Temporal Coverage for high temporal coverage cells")) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    #ggtitle("Bee Sampling Intensity 10x10km Grid") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+
+# And collapse to the same grid cells of shared high temporal coverage for both datasets
+bee_cells <- unique(h_b_grids$GID)
+plant_cells <- unique(h_p_grids$GID)
+# intersect
+shared_cells <- intersect(bee_cells, plant_cells)
+# filter
+h_p_grids <- h_p_grids %>% 
+  filter(GID %in% shared_cells)
+h_b_grids <- h_b_grids %>%  
+  filter(GID %in% shared_cells)
+
+ggplot(h_b_grids) +
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
+    theme_bw() +
+    scale_fill_gradientn(
+      colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
+      na.value = "#808080" # The line that denotes NAs as grey
+    ) +
+     geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
+    ggtitle(paste0("Bee Observation Temporal Coverage for shared high temporal coverage cells")) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    #ggtitle("Bee Sampling Intensity 10x10km Grid") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+ggplot(h_p_grids) +
+  geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
+    theme_bw() +
+    scale_fill_gradientn(
+      colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
+      na.value = "#808080" # The line that denotes NAs as grey
+    ) +
+     geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
+    ggtitle(paste0("Plant Observation Temporal Coverage for shared high temporal coverage cells")) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    #ggtitle("Bee Sampling Intensity 10x10km Grid") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+
+```
+Check temporal coverage per given cell per group 
+```{r}
+# Drop the geometry field for quicker processing 
+hbg <- h_b_grids %>% 
+  st_drop_geometry()
+hpg <- h_p_grids %>% 
+  st_drop_geometry()
+
+# Construct a time series faceted by Grid Cell
+ggplot(hbg, aes(x = factor(year))) +
+  geom_bar(fill = "darkorange", stat = "count", position = "dodge") +
+  geom_text(stat = "count", aes(label = ..count..),
+            position = position_dodge(width = 0.9), hjust = -0.75 , angle = 90, size = 3) +
+  labs(title = "Number of Records per Year",
+       x = "Year",
+       y = "Density") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ GID)
+
+# Construct a time series faceted by Grid Cell
+ggplot(hpg, aes(x = factor(year))) +
+  geom_bar(fill = "darkgreen", stat = "count", position = "dodge") +
+  geom_text(stat = "count", aes(label = ..count..),
+            position = position_dodge(width = 0.9), hjust = -0.75 , angle = 90, size = 3) +
+  labs(title = "Number of Records per Year",
+       x = "Year",
+       y = "Density") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ GID)
+```
+
+Create doy distributions per year 
+```{r}
+year_range <- range(hbg$year, na.rm = TRUE) # grab the range of years for the dataset
+all_years <- seq(year_range[1], year_range[2]) # create a sequence across the min and max of our years
+doy_plot_dir <- "/home/jt-miller/Gurlab/sliding-phenology/outputs/doy-by-year-plots/"
+x <- list()
+for(i in 1:length(all_years)){
+  
+  # Filter to year of interest
+  y <- hbg %>% 
+    filter(year == all_years[[i]])  
+  if(nrow(y) == 0){
+    next
+  }
+  # Plot it 
+  x <- ggplot(data = y, aes(x = doy)) +
+    geom_histogram(bins = 250) +
+    labs(
+      x = "Day of Year",
+      y = "Number of Individuals",
+      title = paste0(all_years[[i]])
+    ) +
+     scale_y_continuous(expand = c(0,0)) +   
+     scale_x_continuous(limits = c(0,365)) +
+     theme_classic() +
+     theme(plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap( ~ GID)
+  ggsave(x, file=paste0(doy_plot_dir, "bees-doy-plot-", all_years[[i]],".png"), width = 14, height = 18, units = "cm")
+}
+# Repeat for plants
+year_range <- range(hpg$year, na.rm = TRUE) # grab the range of years for the dataset
+all_years <- seq(year_range[1], year_range[2]) # create a sequence across the min and max of our years
+doy_plot_dir <- "/home/jt-miller/Gurlab/sliding-phenology/outputs/doy-by-year-plots/"
+x <- list()
+for(i in 1:length(all_years)){
+  
+  # Filter to year of interest
+  y <- hpg %>% 
+    filter(year == all_years[[i]])  
+  if(nrow(y) == 0){
+    next
+  }
+  # Plot it 
+  x <- ggplot(data = y, aes(x = doy)) +
+    geom_histogram(bins = 250) +
+    labs(
+      x = "Day of Year",
+      y = "Number of Individuals",
+      title = paste0(all_years[[i]])
+    ) +
+     scale_y_continuous(expand = c(0,0)) +   
+     scale_x_continuous(limits = c(0,365)) +
+     theme_classic() +
+     theme(plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap( ~ GID)
+  ggsave(x, file=paste0(doy_plot_dir, "plants-doy-plot-", all_years[[i]],".png"), width = 14, height = 18, units = "cm")
+}
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -160,6 +339,7 @@ b_sp_dts <- list()
 b_sp_v <- unique(bd$scientificName)
 for(i in 1:length(b_sp_v)){
   b_sp_dts[[i]] <- subset(bd, scientificName %in% b_sp_v[[i]])
+    
 }
 ```
 
