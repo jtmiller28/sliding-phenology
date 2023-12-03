@@ -142,6 +142,8 @@ cch2_fl_sonoran_data <- flowering_cch2_sf[sonoran_shp, ]
 
 ```
 
+
+
 Write the processed flowering records out to a file to work with later
 ```{r}
 # Drop spatial status 

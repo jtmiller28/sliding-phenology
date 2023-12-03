@@ -1,0 +1,175 @@
+---
+title: "pulling-out-phenology"
+author: "jt-miller"
+date: "2023-11-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Taking the bee and plant data and pulling out the relevant phenometerics by quantile using 
+1. KDE1d distributions
+2. PHENESSE 
+
+Load Libraries
+```{r}
+library(kde1d)
+library(dplyr)
+library(ggplot2)
+library(phenesse)
+library(data.table)
+```
+
+Load Data
+```{r}
+hbg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-bee-data.csv")
+hpg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
+```
+
+Create datasets according to geographic bins 
+```{r}
+grid_holder_b <- list()
+gid_b_v <- unique(hbg$GID)
+for(i in 1:length(unique(hbg$GID))){
+  grid_holder_b[[i]] <- hbg[GID == gid_b_v[[i]],]
+}
+```
+
+
+Create Sliding Decadal bins of datasets
+```{r}
+# Function that uses a for-loop to create the decadal subsets
+decadal_subsetter <- function(dataset, start_year, end_year, bin_size){
+  decadal_subsets <- list() # empty storage list
+for(i in start_year:(end_year - bin_size)){
+  end <- i + bin_size # Our end condition 
+  subset_data <- dataset[year >= i & year <= end, ] # Subsets the data into bins on a decadal sliding scale
+  decadal_subsets[[paste(i, end, sep = "-")]] <- subset_data # Label
+}
+  return(decadal_subsets)
+}
+
+# Set arguments
+start_year <- 1950
+end_year <- 2023
+bin_size <- 10
+nested_list_holder_b <- list()
+for(i in 1:length(grid_holder_b)){
+decadal_subsets <- decadal_subsetter(dataset = grid_holder_b[[i]], # Take the ith grid and do the decadal subsetting  
+                  start_year = start_year, 
+                  end_year = end_year, 
+                  bin_size = bin_size)
+nested_list_holder_b[[paste(i, "grid", sep = "-")]] <- decadal_subsets
+}
+```
+
+
+For each decadal bin, pull out each species and evaluate the phenometrics. Create a df for each species per decadal bin that has the phenometric quantile 50%. 
+*Note if there is insufficient data, NA should populate the field 
+```{r}
+test_bin <- nested_list_holder_b[[1]][[16]]
+test_named_bin <- nested_list_holder_b[[1]][16]
+test_bin_year <- names(test_named_bin)
+
+unique_names_in_bin_v <- unique(test_bin$scientificName)
+
+### Using ked1d package
+for(i in 1:length(unique_names_in_bin_v)){
+  i <- 16 # Remove later
+  named_subset <- test_bin[scientificName %in% unique_names_in_bin_v[i]]
+  if(nrow(named_subset) <= 7){
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fifieth_percentile = NA)
+  }else{
+    # Using kde1
+    kde.sims <- kde1d(x = named_subset$doy, xmin = 0, xmax = 365)
+    quant50 <- qkde1d(p = 0.50, obj=kde.sims)
+    emp.rand.samp <- rkde1d(n = 10000, obj = kde.sims)
+    var50 <- var(emp.rand.samp) 
+    # Plot
+      plot(kde.sims, main = paste0(unique(named_subset$scientificName), " kernel density distribution for time bin ", test_bin_year))
+      abline(v = quant50, col = "red")
+      legend("topright", legend = c("Kernel Density", "50th Percentile"),
+         col = c("black", "red"), lty = 1:1)
+    
+    # Plot + Variance 
+    plot(kde.sims, main = paste0(unique(named_subset$scientificName), " kernel density distribution for time bin ", test_bin_year), xlab = "day of year")
+    abline(v = quant50, col = "red")
+    upper_bound <- quant50 + sqrt(var50)
+    lower_bound <- quant50 - sqrt(var50)
+    # Add error bars
+    #segments(x0 = quant50, y0 = lower_boun, x1 = quant50, y1 = upper_bound, col = "blue", lwd = 2)
+    abline(v = upper_bound, lty= 'dashed', col = "blue")
+    abline(v = lower_bound, lty = 'dashed', col = "blue")
+    # Add a legend
+    legend("topright", legend = c("Kernel Density", "50th Percentile", "Variance"),
+       col = c("black", "red", "blue"), lty = c(1, 1, 2), lwd = c(1, 1, 2), cex = 0.9)
+    
+    
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
+                                            number_of_records = nrow(named_subset))
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := quant50]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_var := var50]
+    
+      } # End of else statement
+  
+} # End of for-loop
+
+
+
+
+```
+```{r}
+# PHENESSE for-loop
+for(i in 1:length(unique_names_in_bin_v)){
+  i <- 16 # Remove later
+  named_subset <- test_bin[scientificName %in% unique_names_in_bin_v[i]]
+  if(nrow(named_subset) <= 7){
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fifieth_percentile = NA)
+  }else{
+    # Using kde1
+    kde.sims <- kde1d(x = named_subset$doy, xmin = 0, xmax = 365)
+    quant <- qkde1d(p = 0.50, obj=kde.sims)
+    # Using PHENESSE
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
+                                            number_of_records = nrow(named_subset))
+    
+    fiftieth_est <- tryCatch(phenesse::weib_percentile(observations = named_subset$doy, percentile = 0.5, iterations = 500),
+                                error = function(e) NA)
+    fiftieth_ci <- tryCatch(phenesse::weib_percentile_ci(observations = named_subset$doy, iterations = 10, percentile = 0.50, bootstraps = 100),
+                                error = function(e) NA)
+    
+    x <- weib_percentile_ci(observations = named_subset$doy, iterations = 100,
+ percentile = 0.50, bootstraps = 100)
+    
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := fiftieth_est]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_nonParametric_bs_percentile := fiftieth_ci[1]]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_nonParametric_bs_lowerCI := fiftieth_ci[2]]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_nonParametric_bs_upperCI := fiftieth_ci[3]]
+
+      } # End of else statement
+  
+} # End of for-loop
+```
+
+
+
+
+
+
+
+
+Using kde1d package, pull out the quantiles from the decadal binned data
+```{r}
+
+test <- nested_list_holder_b[[1]][[16]]
+kde <- density(test$doy)
+kde.sims <- kde1d(x = test$doy, xmin = 0, xmax = 365) # Estimate 
+plot(kde.sims)
+quant50 <- qkde1d(p=0.50, obj=kde.sims)
+
+```
+
+
+
