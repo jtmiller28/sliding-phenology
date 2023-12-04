@@ -69,31 +69,202 @@ nested_list_holder_b[[paste(i, "grid", sep = "-")]] <- decadal_subsets
 For each decadal bin, pull out each species and evaluate the phenometrics. Create a df for each species per decadal bin that has the phenometric quantile 50%. 
 *Note if there is insufficient data, NA should populate the field 
 ```{r}
-test_bin <- nested_list_holder_b[[1]][[16]]
-test_named_bin <- nested_list_holder_b[[1]][16]
-test_bin_year <- names(test_named_bin)
+for(w in 1:length(nested_list_holder_b)){
+  spatial_ID <- names(nested_list_holder_b[w]) # replace with w
+  spatial_bin <- nested_list_holder_b[[w]] # replace with w 
+  for(j in 1:length(spatial_bin)){
+    named_temporal_bin <- names(spatial_bin[j]) # replace with j
+    spatial_temporal_ID <- paste0(spatial_ID, "_", named_temporal_bin)
+    temporal_spatial_bin <- spatial_bin[[j]] # replace with j
+    unique_names_in_bin_v <- unique(temporal_spatial_bin$scientificName) # extract a vector of uniq scientific names from bin
+    for(i in 1:length(unique_names_in_bin_v)){
+      named_subset <- temporal_spatial_bin[scientificName %in% unique_names_in_bin_v[i]] # replace with i
+       if(nrow(named_subset) <= 7 | length(unique(named_subset$doy)) <= 2){
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_var_bound = NA, lower_var_bound = NA)
+  }else{
+    # Using kde1
+    named_subset <- named_subset[doy >= 0 & doy <= 365]
+    kde.sims <- kde1d(x = named_subset$doy, xmin = 0, xmax = 365) # est the univariate likelihood kernel density
+    quant50 <- qkde1d(p = 0.50, obj=kde.sims) # pull out the 50th quantile
+    emp.rand.samp <- rkde1d(n = 10000, obj = kde.sims) # use random generation to find variance
+    var50 <- var(emp.rand.samp) # calc variance
+    
+    # Plot + Variance #############################################################################################################
+    name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_plots/", name, "_", spatial_temporal_ID, ".png"), width = 800, height = 600)
+    plot(kde.sims, main = paste0(unique(named_subset$scientificName), " kernel density distribution for time bin ", spatial_temporal_ID), xlab = "day of year")
+    abline(v = quant50, col = "red")
+    upper_bound <- quant50 + sqrt(var50)
+    lower_bound <- quant50 - sqrt(var50)
+    # Add error bars
+    #segments(x0 = quant50, y0 = lower_boun, x1 = quant50, y1 = upper_bound, col = "blue", lwd = 2)
+    abline(v = upper_bound, lty= 'dashed', col = "blue")
+    abline(v = lower_bound, lty = 'dashed', col = "blue")
+    # Add a legend
+    legend("topright", legend = c("Kernel Density", "50th Percentile", "Variance"),
+       col = c("black", "red", "blue"), lty = c(1, 1, 2), lwd = c(1, 1, 2), cex = 0.9)
+   
+     dev.off() 
+     # End plot saving ##################################################################################################
+    
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
+                                            number_of_records = nrow(named_subset))
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := quant50]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_var := var50]
+    named_phenometric_summary <- named_phenometric_summary[, upper_var_bound := upper_bound]
+    named_phenometric_summary <- named_phenometric_summary[, lower_var_bound := lower_bound]
+  
+fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_tables/", name, "_", spatial_temporal_ID, ".csv"))
 
-unique_names_in_bin_v <- unique(test_bin$scientificName)
+} # End of else statement
+    name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_tables/", name, "_", spatial_temporal_ID, ".csv"))
+    } # end of i loop
+  } # end of j loop
+} # end of w loop
 
-### Using ked1d package
-for(i in 1:length(unique_names_in_bin_v)){
-  i <- 16 # Remove later
-  named_subset <- test_bin[scientificName %in% unique_names_in_bin_v[i]]
+### And just the weib_percentile function from phenesse
+for(w in 1:length(nested_list_holder_b)){
+  spatial_ID <- names(nested_list_holder_b[w]) # replace with w
+  spatial_bin <- nested_list_holder_b[[w]] # replace with w 
+  for(j in 1:length(spatial_bin)){
+    named_temporal_bin <- names(spatial_bin[j]) # replace with j
+    spatial_temporal_ID <- paste0(spatial_ID, "_", named_temporal_bin)
+    temporal_spatial_bin <- spatial_bin[[j]] # replace with j
+    unique_names_in_bin_v <- unique(temporal_spatial_bin$scientificName) # extract a vector of uniq scientific names from bin
+    for(i in 1:length(unique_names_in_bin_v)){
+      named_subset <- temporal_spatial_bin[scientificName %in% unique_names_in_bin_v[i]] # replace with i
+       if(nrow(named_subset) <= 7 | length(unique(named_subset$doy)) <= 2){
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_var_bound = NA, lower_var_bound = NA)
+  }else{
+    # Using phenesse
+    named_subset <- named_subset[doy >= 0 & doy <= 365]
+     fiftieth_est <- tryCatch(phenesse::weib_percentile(observations = named_subset$doy, percentile = 0.5, iterations = 500),
+                                error = function(e) NA)
+     # Start plot saving
+     name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
+     name <- gsub(" ", "-", name) # ""
+     png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/phenesse_weib_plots/", name, "_", spatial_temporal_ID, ".png"), width = 1000, height = 600)
+     hist(named_subset$doy, xlim = c(0,365), main = paste0(unique(named_subset$scientificName), " histogram for time bin ", spatial_temporal_ID), xlab = "day of year")
+     abline(v = fiftieth_est, col = "red")
+     legend("topright", legend ="50th Percentile Estimate",
+       col = "red", lty =  1, lwd = 1, cex = 0.9)
+     dev.off()
+     # End plot saving ##################################################################################################
+    
+    named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
+                                            number_of_records = nrow(named_subset))
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := fiftieth_est]
+  
+fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/phenesse_weib_tables/", name, "_", spatial_temporal_ID, ".csv"))
+
+} # End of else statement
+    name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/phenesse_weib_tables/", name, "_", spatial_temporal_ID, ".csv"))
+    } # end of i loop
+  } # end of j loop
+} # end of w loop
+
+```
+
+Lets also try a community wide phenometric distribution while we're at it.
+```{r}
+for(w in 1:length(nested_list_holder_b)){
+  spatial_ID <- names(nested_list_holder_b[1]) # replace with w
+  spatial_bin <- nested_list_holder_b[[1]] # replace with w 
+  for(j in 1:length(spatial_bin)){
+    named_temporal_bin <- names(spatial_bin[1]) # replace with j
+    spatial_temporal_ID <- paste0(spatial_ID, "_", named_temporal_bin)
+    temporal_spatial_bin <- spatial_bin[[1]] # replace with j
+    unique_names_in_bin_v <- unique(temporal_spatial_bin$scientificName) # extract a vector of uniq scientific names from bin
+    num_of_species <- length(unique_names_in_bin_v)
+    subset <- temporal_spatial_bin # rename
+    #for(i in 1:length(unique_names_in_bin_v)){
+      #named_subset <- temporal_spatial_bin[scientificName %in% unique_names_in_bin_v[i]] # replace with i
+       if(nrow(subset) <= 7 | length(unique(subset$doy)) <= 2){
+    named_phenometric_summary <- data.table(taxa = "Bees", GID = unique(subset$GID), number_of_records = nrow(subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_var_bound = NA, lower_var_bound = NA)
+  }else{
+    # Using kde1
+    subset <- subset[doy >= 0 & doy <= 365]
+    kde.sims <- kde1d(x = subset$doy, xmin = 0, xmax = 365) # est the univariate likelihood kernel density
+    quant50 <- qkde1d(p = 0.50, obj=kde.sims) # pull out the 50th quantile
+    emp.rand.samp <- rkde1d(n = 10000, obj = kde.sims) # use random generation to find variance
+    var50 <- var(emp.rand.samp) # calc variance
+    
+    # Plot + Variance #############################################################################################################
+    name <- gsub(",", "", unique(subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_plots/", name, "_", spatial_temporal_ID, ".png"), width = 800, height = 600)
+    plot(kde.sims, main = paste0(unique(subset$scientificName), " kernel density distribution for time bin ", spatial_temporal_ID), xlab = "day of year")
+    abline(v = quant50, col = "red")
+    upper_bound <- quant50 + sqrt(var50)
+    lower_bound <- quant50 - sqrt(var50)
+    # Add error bars
+    #segments(x0 = quant50, y0 = lower_boun, x1 = quant50, y1 = upper_bound, col = "blue", lwd = 2)
+    abline(v = upper_bound, lty= 'dashed', col = "blue")
+    abline(v = lower_bound, lty = 'dashed', col = "blue")
+    # Add a legend
+    legend("topright", legend = c("Kernel Density", "50th Percentile", "Variance"),
+       col = c("black", "red", "blue"), lty = c(1, 1, 2), lwd = c(1, 1, 2), cex = 0.9)
+   
+     dev.off() 
+     # End plot saving ##################################################################################################
+    
+    named_phenometric_summary <- data.table(scientificName = unique(subset$scientificName), GID = unique(subset$GID),
+                                            number_of_records = nrow(subset))
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := quant50]
+    named_phenometric_summary <- named_phenometric_summary[, fiftieth_var := var50]
+    named_phenometric_summary <- named_phenometric_summary[, upper_var_bound := upper_bound]
+    named_phenometric_summary <- named_phenometric_summary[, lower_var_bound := lower_bound]
+  
+fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_tables/", name, "_", spatial_temporal_ID, ".csv"))
+
+} # End of else statement
+    name <- gsub(",", "", unique(subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    fwrite(named_phenometric_summary, paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_tables/", name, "_", spatial_temporal_ID, ".csv"))
+    #} # end of i loop
+  } # end of j loop
+} # end of w loop
+```
+
+
+```{r}
+# Initialize objects outside loops
+result_list <- list()
+
+for (j in 1:length(nested_grid_holder_b)) {
+  
+  spatial_bin <- nested_list_holder_b[1] # replace with j
+  name_of_spatial_bin <- names(spatial_bin)
+  
+  for (w in 1:length(spatial_bin[[1]])) {
+    
+    spatial_times_bin <- spatial_bin[[1]] # replace with w
+
+    for (i in 1:length(unique_names_in_bin_v)) {
+      
+      spatial_time_subset <- spatial_time_bin[[1]] # replace with i
+      unique_names_in_bin <- unique(spatial_time_subset$scientificName)
+      spatial_time_subset_name <- names(spatial_time_subset)
+      
+      named_subset <- test_bin[scientificName %in% unique_names_in_bin_v[i]] # replace with i
   if(nrow(named_subset) <= 7){
     named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fifieth_percentile = NA)
   }else{
     # Using kde1
-    kde.sims <- kde1d(x = named_subset$doy, xmin = 0, xmax = 365)
-    quant50 <- qkde1d(p = 0.50, obj=kde.sims)
-    emp.rand.samp <- rkde1d(n = 10000, obj = kde.sims)
-    var50 <- var(emp.rand.samp) 
-    # Plot
-      plot(kde.sims, main = paste0(unique(named_subset$scientificName), " kernel density distribution for time bin ", test_bin_year))
-      abline(v = quant50, col = "red")
-      legend("topright", legend = c("Kernel Density", "50th Percentile"),
-         col = c("black", "red"), lty = 1:1)
+    kde.sims <- kde1d(x = named_subset$doy, xmin = 0, xmax = 365) # est the univariate likelihood kernel density
+    quant50 <- qkde1d(p = 0.50, obj=kde.sims) # pull out the 50th quantile
+    emp.rand.samp <- rkde1d(n = 10000, obj = kde.sims) # use random generation to find variance
+    var50 <- var(emp.rand.samp) # calc variance
     
-    # Plot + Variance 
+    # Plot + Variance #############################################################################################################
+    name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
+    name <- gsub(" ", "-", name) # ""
+    png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_plots/", name, "_", test_bin_year, ".png"), width = 800, height = 600)
     plot(kde.sims, main = paste0(unique(named_subset$scientificName), " kernel density distribution for time bin ", test_bin_year), xlab = "day of year")
     abline(v = quant50, col = "red")
     upper_bound <- quant50 + sqrt(var50)
@@ -105,21 +276,41 @@ for(i in 1:length(unique_names_in_bin_v)){
     # Add a legend
     legend("topright", legend = c("Kernel Density", "50th Percentile", "Variance"),
        col = c("black", "red", "blue"), lty = c(1, 1, 2), lwd = c(1, 1, 2), cex = 0.9)
-    
+   
+     dev.off() 
+     # End plot saving ##################################################################################################
     
     named_phenometric_summary <- data.table(scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
                                             number_of_records = nrow(named_subset))
     named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := quant50]
     named_phenometric_summary <- named_phenometric_summary[, fiftieth_var := var50]
-    
-      } # End of else statement
-  
-} # End of for-loop
+    named_phenometric_summary <- named_phenometric_summary[, upper_var_bound := upper_bound]
+    named_phenometric_summary <- named_phenometric_summary[, lower_var_bound := lower_bound]
+      
+      # Store results in a list
+      result_list[[paste0(name, "_", test_bin_year)]] <- named_phenometric_summary
+      
+    } # end of else statement 
+    } # end of i loop
+  } # end of w loop
 
+} # end of j loop
 
+# Combine results into a data.table or other appropriate structure
+final_result <- do.call(rbind, result_list)
 
+# Write final result to CSV
+fwrite(final_result, "/path/to/final_result.csv")
 
 ```
+
+
+
+
+
+
+
+
 ```{r}
 # PHENESSE for-loop
 for(i in 1:length(unique_names_in_bin_v)){
