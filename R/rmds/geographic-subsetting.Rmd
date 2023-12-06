@@ -20,7 +20,7 @@ library(ggplot2)
 ```
 Read in the Data 
 ```{r}
-fld <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/sonoran-flowering-temporal-labeled-data.csv")
+fld <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/harmonized_plants.csv") # taxonomic harmonized data as required for the plant data
 bd <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/sonoran-bee-temporal-labeled-data.csv")
 # Bring in Ecoregion shapefiles 
 na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
@@ -261,7 +261,7 @@ ggplot(hpg, aes(x = factor(year))) +
   facet_wrap(~ GID)
 ```
 Write out the spatially binned data. 
-```{r eval=FALSE, include=FALSE}
+```{r}
 fwrite(hbg, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-bee-data.csv")
 fwrite(hpg, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
 ```
