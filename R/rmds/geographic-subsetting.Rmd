@@ -12,11 +12,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Geographic subsetting the data for Biological Meaning 
 ```{r}
 library(data.table)
-
 library(sf)
 library(raster)
 library(dplyr)
 library(ggplot2)
+library(ggspatial)
 ```
 Read in the Data 
 ```{r}
@@ -59,7 +59,10 @@ ggplot() +
   geom_sf(sonoran_shp, mapping = aes(), fill = "darkorange") +
   geom_sf(touching_cells, mapping = aes(), alpha = 0.2) +
   theme_bw() +
-  ggtitle("50x50km Grids over the Sonoran Desert")
+  ggtitle("50x50km Grids over the Sonoran Desert") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/sonoran-50by50-plot.png", width = 7, height = 7)
 
 # Assign bee data to 50x50 grid bins
 grids_w_bees <- touching_cells %>% 
@@ -130,28 +133,35 @@ ggplot(grids_w_bees) +
     theme_bw() +
     scale_fill_gradientn(
       colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
-      na.value = "#808080" # The line that denotes NAs as grey
+      na.value = "#808080", # The line that denotes NAs as grey
+      limits = c(0, 100), # Set the range of values
+      breaks = c(0, 25, 50, 100) # Custom breaks
     ) +
      geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
-    ggtitle(paste0("Bee Observation Temporal Coverage")) +
+    ggtitle(paste0("Bee Temporal Coverage")) +
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
     #ggtitle("Bee Sampling Intensity 10x10km Grid") +
     theme(plot.title = element_text(hjust = 0.5)) +
-    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+    guides(fill=guide_legend(title="% of all time for 1950-1972"), alpha = FALSE)
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/sonoran-bee-temporal-cov.png", width = 7, height = 7)
+
 
 ggplot(grids_w_plants) +
   geom_sf(mapping = aes(fill = (temp_cov_perc), alpha = 0.7)) + # Log Transform, correct for log10(1) = 0
     theme_bw() +
     scale_fill_gradientn(
       colours = colorRampPalette((RColorBrewer::brewer.pal(11, "BuPu")))(9), 
-      na.value = "#808080" # The line that denotes NAs as grey
+      na.value = "#808080", # The line that denotes NAs as grey
+      limits = c(0, 100), # Set the range of values
+      breaks = c(0, 25, 50, 100) # Custom breaks
     ) +
      geom_sf(sonoran_shp, mapping = aes(), fill = NA) + # Adjusts fill to be NA
-    ggtitle(paste0("Plant Observation Temporal Coverage")) +
+    ggtitle(paste0("Plant Temporal Coverage")) +
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
     #ggtitle("Bee Sampling Intensity 10x10km Grid") +
     theme(plot.title = element_text(hjust = 0.5)) +
-    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+    guides(fill=guide_legend(title="% of all time for 1950-1972"), alpha = FALSE)
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/sonoran-plant-temporal-cov.png", width = 7, height = 7)
 ```
 Subsetting Scenario #1. Retain cells with greater than or equal to 75% Temporal Coverage (Arbitrary, question for Rob & JM)
 ```{r}
@@ -225,7 +235,56 @@ ggplot(h_p_grids) +
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
     #ggtitle("Bee Sampling Intensity 10x10km Grid") +
     theme(plot.title = element_text(hjust = 0.5)) +
-    guides(fill=guide_legend(title="% of all time for 1950-1972"))
+    guides(fill=guide_legend(title="% of all time for 1950-1972"), alpha = FALSE)
+
+shared_for_plot <- subset(touching_cells, touching_cells$GID %in% shared_cells)
+plot_extent <- extent(shared_for_plot)
+ggplot() +
+  geom_sf(shared_for_plot, mapping = aes(), fill = NA) +
+  geom_sf_text(data = shared_for_plot, aes(label = GID)) +
+  geom_sf(sonoran_shp, mapping = aes(), fill = "darkorange", alpha = 0.2) + 
+  xlab("Longitude") +
+  ylab("Latitude") +
+  ggtitle(paste0("Plant & Bee Shared High", "\n",  "Temporal Coverage Cells")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  coord_sf(xlim = c(min(plot_extent[1] + 1000), max(plot_extent[2] + 1000)),
+           ylim = c(min(plot_extent[3] + 1000), max(plot_extent[4] + 1000))) 
+
+
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/sonoran-sites-of-high-group-cov.png", width = 8, height = 8)
+
+
+### Nice map for poster: 
+na_ecoregions_3t<- st_transform(na_ecoregions_3, crs = crs_1)
+
+sonoran_extent <- extent(sonoran_shp)
+ggplot() +
+  geom_sf(na_ecoregions_3t, mapping = aes(), col = 1, fill = "ivory") +
+  geom_sf(sonoran_shp, mapping = aes(fill = "Sonoran Desert", col = "darkorange")) +
+  geom_sf(touching_cells, mapping = aes(), alpha = 0.2) +
+    coord_sf(xlim = c(min(sonoran_extent[1]), max(sonoran_extent[2])),
+           ylim = c(min(sonoran_extent[3]), max(sonoran_extent[4]))) +
+  
+  #coord_sf(xlim = c(-125, -109), ylim = c(27.5, 43), expand = FALSE) +
+  annotation_north_arrow(location = "bl", which_north = "true",
+                         pad_x = unit(0.10, "in"), pad_y = unit(0.05, "in"),
+                         style = north_arrow_fancy_orienteering) +
+  ggtitle("The Sonoran Desert with 50x50km grid cells") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(panel.grid.major = element_line(color = gray(0.5), linetype = "dashed",
+                                        linewidth  = 0.5),panel.background = element_rect(fill = "lightblue"),
+        axis.text = element_text(size = 11, colour = 1),
+        panel.grid = element_line(colour = NA)) +
+  labs(x = "Longitude", y = "Latitude") + 
+  scale_fill_manual(values = c("Sonoran Desert" = "darkorange", "Other" = "ivory"),
+                    guide = guide_legend(title = NULL)) +
+  guides(colour = FALSE, fill  = FALSE)
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/sonoran-high-quality-50x50.png", width = 8, height = 8)
+  #scale_fill_manual(name="Ecoregion", values = c("darkorange"))
+ 
 
 ```
 Check temporal coverage per given cell per group 

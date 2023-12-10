@@ -8,7 +8,7 @@
 #SBATCH --ntasks=1                       # Run a single task
 #SBATCH --cpus-per-task=10               # Number of CPU cores per task
 #SBATCH --mem=50gb                       # Job memory request
-#SBATCH --time=00-60:00:00               # Time limit days-hrs:min:sec
+#SBATCH --time=00-95:00:00               # Time limit days-hrs:min:sec
 #SBATCH --qos=soltis-b
 pwd; hostname; date
 
@@ -17,6 +17,6 @@ pwd; hostname; date
 module load R/4.0
 
 #do some (or alot) of coding
-Rscript --vanilla /blue/soltis/millerjared/temp-sliding-phen/sliding-window-phenesse.R $1 $2 
+Rscript --vanilla /blue/soltis/millerjared/temp-sliding-phen/sliding-window-phenesse-bees.R $1 $2 
 
 ##example for running: sbatch /blue/soltis/millerjared/temp-sliding-phen/sliding-window-phenesse.sh /blue/soltis/millerjared/temp-sliding-phen/outputs/phenesse-species-plots-par/ /blue/soltis/millerjared/temp-sliding-phen/outputs/phenesse-species-tables-par/

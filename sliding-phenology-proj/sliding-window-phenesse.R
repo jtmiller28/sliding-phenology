@@ -88,9 +88,9 @@ for(i in 1:length(grid_holder_p)){
 
 
 ### Phenesse #######################################################################################################################
-foreach(w = 1:length(nested_list_holder_p), .packages = c("data.table", "phenesse", "doParallel")) %dopar% {
-  spatial_ID <- names(nested_list_holder_p[w]) # replace with w
-  spatial_bin <- nested_list_holder_p[[w]] # replace with w 
+foreach(w = 1:length(nested_list_holder_b), .packages = c("data.table", "phenesse", "doParallel")) %dopar% {
+  spatial_ID <- names(nested_list_holder_b[w]) # replace with w
+  spatial_bin <- nested_list_holder_b[[w]] # replace with w 
   foreach(j = 1:length(spatial_bin)) %dopar% {
     named_temporal_bin <- names(spatial_bin[j]) # replace with j
     spatial_temporal_ID <- paste0(spatial_ID, "_", named_temporal_bin)
@@ -99,7 +99,7 @@ foreach(w = 1:length(nested_list_holder_p), .packages = c("data.table", "pheness
     foreach(i = 1:length(unique(temporal_spatial_bin$scientificName))) %dopar% {
       named_subset <- temporal_spatial_bin[scientificName %in% unique_names_in_bin_v[i]] # replace with i
       if(nrow(named_subset) <= 5 | length(unique(named_subset$doy)) <= 3){
-        named_phenometric_summary <- data.table(taxa = "plant", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_ci = NA, lower_ci = NA)
+        named_phenometric_summary <- data.table(taxa = "bee", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_ci = NA, lower_ci = NA)
       }else{
         # Using phenesse
         named_subset <- named_subset[doy >= 0 & doy <= 365]
@@ -110,7 +110,7 @@ foreach(w = 1:length(nested_list_holder_p), .packages = c("data.table", "pheness
           # Start plot saving
           name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
           name <- gsub(" ", "-", name) # ""
-          png(paste0(plot_dir,"plant_", name, "_", spatial_temporal_ID, ".png"), width = 1000, height = 600)
+          png(paste0(plot_dir,"bee_", name, "_", spatial_temporal_ID, ".png"), width = 1000, height = 600)
           hist(named_subset$doy, xlim = c(0,365), main = paste0(unique(named_subset$scientificName), " histogram for time bin ", spatial_temporal_ID), xlab = "day of year")
           abline(v = fiftieth_est[1], col = "red")
           
@@ -127,27 +127,27 @@ foreach(w = 1:length(nested_list_holder_p), .packages = c("data.table", "pheness
           
           # End plot saving ##################################################################################################
           
-          named_phenometric_summary <- data.table(taxa = "plant", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
+          named_phenometric_summary <- data.table(taxa = "bee", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID),
                                                   number_of_records = nrow(named_subset))
           named_phenometric_summary <- named_phenometric_summary[, fiftieth_percentile := fiftieth_est[[1]]]
           named_phenometric_summary <- named_phenometric_summary[, upper_ci := fiftieth_est[[3]]]
           named_phenometric_summary <- named_phenometric_summary[, lower_ci := fiftieth_est[[2]]]
           
-          fwrite(named_phenometric_summary, paste0(table_dir, "plant_", name, "_", spatial_temporal_ID, ".csv"))
+          fwrite(named_phenometric_summary, paste0(table_dir, "bee_", name, "_", spatial_temporal_ID, ".csv"))
         } # End of if statement (issue with the NA)
         else{
-          named_phenometric_summary <- data.table(taxa = "plant", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_ci = NA, lower_ci = NA)
+          named_phenometric_summary <- data.table(taxa = "bee", scientificName = unique(named_subset$scientificName), GID = unique(named_subset$GID), number_of_records = nrow(named_subset), fiftieth_percentile = NA, fiftieth_var = NA, upper_ci = NA, lower_ci = NA)
           
           # End of else statement
           name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
           name <- gsub(" ", "-", name) # ""
-          fwrite(named_phenometric_summary, paste0(table_dir, "plant_", name, "_", spatial_temporal_ID, ".csv"))
+          fwrite(named_phenometric_summary, paste0(table_dir, "bee_", name, "_", spatial_temporal_ID, ".csv"))
           
         } # End of else
       } # End of else statement
       name <- gsub(",", "", unique(named_subset$scientificName)) # Fix some file naming shennanigans
       name <- gsub(" ", "-", name) # ""
-      fwrite(named_phenometric_summary, paste0(table_dir, "plant_", name, "_", spatial_temporal_ID, ".csv"))
+      fwrite(named_phenometric_summary, paste0(table_dir, "bee_", name, "_", spatial_temporal_ID, ".csv"))
     } # end of i loop
   } # end of j loop
 } # end of w loop
