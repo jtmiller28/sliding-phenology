@@ -1,0 +1,397 @@
+---
+title: "linear-model"
+author: "jt-miller"
+date: "2023-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Running a Linear Model on the Community Level Phenology Data
+```{r}
+library(data.table)
+library(effects)
+library(car)
+library(lme4)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(stringr)
+```
+
+
+Community level median trends
+```{r}
+directory <- "/home/jt-miller/Gurlab/sliding-phenology/outputs/kde_community_tables/"
+file_list <- list.files(directory, full.names = TRUE)
+
+community_phenometrics <- list()
+for(i in 1:length(file_list)){
+  community_phenometrics[[i]] <- fread(file_list[[i]])
+
+}
+community_phenometrics <- rbindlist(community_phenometrics)
+
+community_phenometrics$time_bin <- factor(community_phenometrics$time_bin, levels = unique(community_phenometrics$time_bin))
+
+plot(community_phenometrics, x = community_phenometrics$time_bin, y = community_phenometrics$fiftieth_percentile)
+
+plant_comm_metrics <- community_phenometrics[taxa == "plants"]
+bee_comm_metrics <- community_phenometrics[taxa == "bees"]
+
+ggplot(plant_comm_metrics, aes(x = time_bin, y = fiftieth_percentile, color = time_bin)) +
+    geom_point(size = 2) +
+    labs(title = "Plants Temporal Plot of Medians",
+         x = "Time Bins",
+         y = "Medians") + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap(~GID) +
+     guides(color = FALSE) 
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/community-plant-point-plots.png", width = 20, height = 10)
+
+
+ggplot(bee_comm_metrics, aes(x = time_bin, y = fiftieth_percentile, color = time_bin)) +
+    geom_point() +
+   
+    labs(title = "Bees Temporal Plot of Medians",
+         x = "Time Bins",
+         y = "Medians") + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap(~GID) +
+     guides(color = FALSE) 
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/community-bees-point-plots.png", width = 20, height = 10)
+```
+Run a linear Model: Y ~ X where Y is the outcome variable (the median phenology) and X is the predictor variable (the timebin)
+```{r}
+# Seperate By Gridcell
+plant_comm_subset1 <- plant_comm_metrics[GID == 217]
+plant_comm_subset2 <- plant_comm_metrics[GID == 229]
+plant_comm_subset3 <- plant_comm_metrics[GID == 230]
+plant_comm_subset4 <- plant_comm_metrics[GID == 241]
+# Create Temporal Ordering 
+plant_comm_subset1 <- plant_comm_subset1 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_comm_subset2 <- plant_comm_subset2 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_comm_subset3 <- plant_comm_subset3 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_comm_subset4 <- plant_comm_subset4 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+# Run Simple Linear Models 
+lm_model1 <- lm(fiftieth_percentile ~ time_index, data = plant_comm_subset1)
+lm_model2 <- lm(fiftieth_percentile ~ time_index, data = plant_comm_subset2)
+lm_model3 <- lm(fiftieth_percentile ~ time_index, data = plant_comm_subset3)
+lm_model4 <- lm(fiftieth_percentile ~ time_index, data = plant_comm_subset4)
+# Create summary outputs
+summary(lm_model1)
+summary(lm_model2)
+summary(lm_model3)
+summary(lm_model4)
+qqPlot(lm_model1$residuals)
+qqPlot(lm_model2$residuals)
+qqPlot(lm_model3$residuals)
+qqPlot(lm_model4$residuals)
+```
+
+```{r}
+plot(allEffects(lm_model1))
+plot(allEffects(lm_model2))
+plot(allEffects(lm_model3))
+plot(allEffects(lm_model4))
+```
+And Bees
+```{r}
+# Spatially Subset
+bee_comm_subset1 <- bee_comm_metrics[GID == 217]
+bee_comm_subset2 <- bee_comm_metrics[GID == 229]
+bee_comm_subset3 <- bee_comm_metrics[GID == 230]
+bee_comm_subset4 <- bee_comm_metrics[GID == 241]
+
+# Temporally Organize
+bee_comm_subset1 <- bee_comm_subset1 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_comm_subset2 <- bee_comm_subset2 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_comm_subset3 <- bee_comm_subset3 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_comm_subset4 <- bee_comm_subset4 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+
+lm_model1b <- lm(fiftieth_percentile ~ time_index, data = bee_comm_subset1)
+lm_model2b <- lm(fiftieth_percentile ~ time_index, data = bee_comm_subset2)
+lm_model3b <- lm(fiftieth_percentile ~ time_index, data = bee_comm_subset3)
+lm_model4b <- lm(fiftieth_percentile ~ time_index, data = bee_comm_subset4)
+summary(lm_model1b)
+summary(lm_model2b)
+summary(lm_model3b)
+summary(lm_model4b)
+qqPlot(lm_model1b$residuals)
+qqPlot(lm_model2b$residuals)
+qqPlot(lm_model3b$residuals)
+qqPlot(lm_model4b$residuals)
+```
+
+
+
+Incorporating a trend line into the ggplot
+```{r}
+model1_predict <- cbind(plant_comm_subset1, predict(lm_model1, interval = "confidence"))
+model2_predict <- cbind(plant_comm_subset2, predict(lm_model2, interval = "confidence"))
+model3_predict <- cbind(plant_comm_subset3, predict(lm_model3, interval = "confidence"))
+model4_predict <- cbind(plant_comm_subset4, predict(lm_model4, interval = "confidence"))
+
+full_models <- rbind(model1_predict, model2_predict, model3_predict, model4_predict)
+
+ggplot(model3_predict, aes(x = time_bin, y = fiftieth_percentile, color = time_bin)) +
+  geom_point(size = 3) +
+  geom_line(aes(time_cell, fit,),linetype = "dashed",   col = "black") + 
+  geom_ribbon(aes(ymin=lwr,ymax=upr), alpha=0.3) +
+  guides(color = FALSE) + 
+  labs(title = "Plants Temporal Plot of Medians",
+         x = "Time Bins",
+         y = "Medians") + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap(~GID) +
+     guides(color = FALSE) 
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/plant-community-plot241-w-regression.png", width = 20, height = 10)
+
+
+model4_predictb <- cbind(bee_comm_subset4, predict(lm_model4b, interval = "confidence"))
+model3_predictb <- cbind(bee_comm_subset3, predict(lm_model3b, interval = "confidence"))
+ggplot(model4_predictb, aes(x = time_bin, y = fiftieth_percentile, color = time_bin)) +
+  geom_point(size = 3) +
+  geom_ribbon(aes(ymin=lwr,ymax=upr), alpha=0.3) +
+  guides(color = FALSE) + 
+  labs(title = "Bees Temporal Plot of Medians",
+         x = "Time Bins",
+         y = "Medians") + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) + 
+    facet_wrap(~GID) +
+     guides(color = FALSE) 
+
+ggsave("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/bees-community-plot241-w-regression.png", width = 20, height = 10)
+```
+Fixed Effects 
+```{r}
+# Due to factor binning making it where each record would have its own unique number of records, we're going to create bins to throw them in as 10s, 100s, 1000s, 10000s somewhat arbitrarily 
+### Change factor levels so we dont have 1 per 
+plant_comm_subset1 <- plant_comm_subset1 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+plant_comm_subset2 <- plant_comm_subset2 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+plant_comm_subset3 <- plant_comm_subset3 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+plant_comm_subset4 <- plant_comm_subset4 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+
+
+
+fx_p_model1<- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = plant_comm_subset1) # adding number of records as a fixed effect
+summary(fx_p_model1)
+fx_p_model2 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = plant_comm_subset2) # adding number of records as a fixed effect
+summary(fx_p_model2)
+fx_p_model3 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = plant_comm_subset3) # adding number of records as a fixed effect
+summary(fx_p_model3)
+fx_p_model4 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = plant_comm_subset4) # adding number of records as a fixed effect
+summary(fx_p_model4)
+
+# Same thing for the bees
+bee_comm_subset1 <- bee_comm_subset1 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+bee_comm_subset2 <- bee_comm_subset2 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+bee_comm_subset3 <- bee_comm_subset3 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+bee_comm_subset4 <- bee_comm_subset4 %>% 
+  mutate(records_threshold = case_when(
+    number_of_records < 100 ~ "10s",
+    1000 > number_of_records  & number_of_records >= 100  ~ "100s", 
+    10000 > number_of_records & number_of_records >= 1000 ~ "1000s",
+    100000 > number_of_records & number_of_records >= 10000 ~ "10000s"
+  ))
+
+
+fx_b_model1<- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = bee_comm_subset1) # adding number of records as a fixed effect
+summary(fx_b_model1)
+fx_b_model2 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = bee_comm_subset2) # adding number of records as a fixed effect
+summary(fx_b_model2)
+fx_b_model3 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = bee_comm_subset3) # adding number of records as a fixed effect
+summary(fx_b_model3)
+fx_b_model4 <- lm(fiftieth_percentile ~ time_index + factor(records_threshold), data = bee_comm_subset4) # adding number of records as a fixed effect
+summary(fx_b_model4)
+
+
+```
+Result Table:
+```{r}
+summary(lm_model1) # p-value is 0.004933
+summary(lm_model2) # p-value is 1.251*10^-6
+summary(lm_model3) # p-value is 3.876*10^-6
+summary(lm_model4) # p-value is 9.824*10^-8
+summary(lm_model1b) # p-value is 0.896
+summary(lm_model2b) # p-value is 6.485*10-6
+summary(lm_model3b) # p-value is 6.864*10-6
+summary(lm_model4b) # p-value is 0.1068
+summary(fx_p_model1) # p-value is
+summary(fx_p_model2) # p-value is
+summary(fx_p_model3) # p-value is 
+summary(fx_p_model4) # p-value is
+summary(fx_b_model1) # p-value is 
+summary(fx_b_model2) # p-value is
+summary(fx_b_model3) # p-value is
+summary(fx_b_model4) # p-value is
+
+
+summary_table <- data.frame(taxa = c("plants", "plants", "plants", "plants", "bees", "bees", "bees", "bees"),grid_cell = c(217, 229, 230, 241, 217, 229, 230, 241), lms_community = c(0.004933, 1.251*10^-6, 3.876*10^-6, 9.824*10^-8, 0.896,  6.485*10^-6, 6.864*10^-6, 0.1068), fixed_effect_community = c(2.071*10^-10, 1.661*10^-7, 7.158*10^-12, 6.513*10^-8, 0.9075, 1.917*10^-6, 5.43*10^-6, 1.793*10^-13), fixed_effect_phenesse_lm = c(9.249*10^-13, 0.1614, 0.9971, 0.5867, 4.207*10^-6, 2.2*10^-16, 7.221*10^-11, 1.018*10^-12)) # See pulling-out-phenesse script for the fixed_effects_outputs
+
+ggtexttable(summary_table, cols = c("Taxa", "Grid Cell", "Linear Regression", "Linear Mixed Model Community", "Linear Mixed Model Species")) 
+library(gt)
+library(gtsummary)
+# Create a gt table
+stats_table <- summary_table %>% gt() %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "yellow"),
+      cell_text(style = "italic")
+      ),
+    locations = cells_body(
+      columns = lms_community,
+      rows = lms_community < 0.05
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "yellow"),
+      cell_text(style = "italic")
+      ),
+    locations = cells_body(
+      columns = fixed_effect_community,
+      rows = fixed_effect_community < 0.05
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "yellow"),
+      cell_text(style = "italic")
+      ),
+    locations = cells_body(
+      columns = fixed_effect_phenesse_lm,
+      rows = fixed_effect_phenesse_lm < 0.05
+    )
+  ) %>% 
+  cols_label(
+    taxa = "Taxa",
+    grid_cell = "Grid Cell",
+    lms_community = "lm Community",
+    fixed_effect_community = "lm fixed-effect community",
+    fixed_effect_phenesse_lm = "lm fixed-effect species "
+  )
+
+gtsave(data = stats_table, filename = "/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/stats-table.png")
+# Print the table
+print(table_gt)
+
+
+# Print the table
+print(table_gt)
+
+# Print the table
+print(table_gt)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Fixed Effects 
+```{r}
+model <- lm(fiftieth_percentile ~ time_cell + number_of_records + num_of_species, data = plant_comm_subset1) # adding number of records as a fixed effect
+summary(model)
+```
+

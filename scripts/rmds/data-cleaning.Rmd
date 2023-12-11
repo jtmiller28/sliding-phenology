@@ -1,0 +1,211 @@
+---
+title: "data-cleaning"
+author: "jt-miller"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Clean Phenobase Data 
+```{r}
+library(data.table)
+library(sf)
+```
+Bring in the phenobase data
+```{r}
+pheno_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/phenobase-observations-dwca/observations.csv")
+```
+Identify Fields that will need to be filtered down for our questions about flowering phenology
+```{r}
+check <- head(pheno_data) # Make it easier to look at the data as a snapshot
+unique(pheno_data$datasetName) # Filter for "iNaturanlist research-grade observations"
+research_grade_string <- "iNaturalist research-grade observations"
+unique(pheno_data$captive) # Filter cultivated
+unique(pheno_data$informationWithheld)
+wild_string <- "wild"
+unique(pheno_data$geodeticDatum) # All good here
+unique(pheno_data$reproductiveCondition) # for our purposes we'll want to remove
+non_repoductive_vec <- c("flower budding", "no evidence of flowering", "fruiting", "fruiting|flower budding", "fruiting|no evidence of flowering", "flowering|no evidence of flowering") # Not sure what the last one means, ask Rob. 
+
+# Select Fields of interest, and filter data accordingly 
+
+flowering_data <- pheno_data[, .(id, occurrenceID, datasetName, informationWithheld, recordedBy, recordedByID, identifiedBy, identifiedByID, captive, eventDate, eventTime, verbatimEventDate, verbatimLocality, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, identificationID, scientificName, taxonRank, reproductiveCondition)] # Select a subset of fields of interest
+
+flowering_data <- flowering_data[datasetName == research_grade_string]
+flowering_data <- flowering_data[captive == wild_string]
+flowering_data <- flowering_data[!reproductiveCondition %in% non_repoductive_vec]
+
+flowering_data <- flowering_data[!is.na(decimalLongitude)]
+flowering_data <- flowering_data[!is.na(decimalLatitude)]
+```
+
+Spatially subset our data to include only that of the EPA's level 3 Sonoran Ecoregion to localize the analysis 
+```{r}
+# Make our inat data spatial 
+flowering_data_sf <- st_as_sf(flowering_data, 
+                              coords = c("decimalLongitude", "decimalLatitude"),
+                              crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
+                              remove = FALSE)
+
+# Bring in Ecoregion shapefiles 
+na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
+
+# Filter for just the Sonoran Desert & Mojave
+sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+mojave_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Mojave Basin and Range")
+# Filter for just the Sonoran Desert 
+desert_shps <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME %in% c("Sonoran Desert", "Mojave Basin and Range"))
+
+# Convert the crs of the inat data to that of the sonoran shapefile
+flowering_data_sf <- flowering_data_sf %>% 
+  #st_transform(crs = st_crs(sonoran_shp))
+  st_transform(crs = st_crs(desert_shps))
+
+# And filter the data to be only within the sonoran shp boundary 
+flowering_sonoran_data <- flowering_data_sf[sonoran_shp, ]
+flowering_sonoran_data <- flowering_sonoran_data[, ecoregion := "Sonoran Desert"]
+flowering_mojave_data <- flowring_data_sf[mojave_shp, ]
+flowering_mojave_data <- flowering_mojave_data[, ecoregion := "Mojave Basin and Range"]
+
+
+
+nrow(flowering_sonoran_data)
+nrow(flowering_mojave_data)
+
+flowering_desert_data <- 
+
+```
+
+Write the processed flowering records out to a file to work with later
+```{r}
+# Drop spatial status 
+flowering_sonoran_data <- flowering_sonoran_data %>% 
+  st_drop_geometry()
+
+class(flowering_sonoran_data)
+
+#fwrite(flowering_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/flowering_sonoran_data.csv")
+```
+
+Getting boundary extents for CCH2 purposes 
+```{r}
+sonoran_latlon <- st_transform(sonoran_shp, crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+sonoran_boundary <- st_boundary(sonoran_latlon)
+# Produces https://www.cch2.org/portal/collections/list.php?db=58,2,14,98,48,1,52,50,44,61,109,42,47,39,107,77,111,38,73,9,95,5,59,45,55,37,54,53,100,101,10,34,97,19,86,36,108,71,96,74,12,81,49,56,104,76,4,89,17,105,51,16,102,7,43,112,106,6,40,41,69,18,82,15,87,110,75,46,64,3,35,13,80,91,57,103,60,92,72,79;1,1&attr=2,6&llbound=35.03357;25.96243;-116.754;-108.6431
+```
+
+Read in CCH2 data 
+```{r}
+sonoran_cch2 <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/occurrences.csv")
+```
+Clean the CCH2 data
+```{r}
+# Find fields of interest. 
+names(sonoran_cch2)
+sonoran_cch2 <- sonoran_cch2[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank, reproductiveCondition)]
+
+# Remove non-flowering annotations 
+unique(sonoran_cch2$reproductiveCondition)
+non_repoductive_strings <- c("", "FR", "Fruiting", "fruits", "buds", "Buds only", "UNK", "Buds","Last year?s fruits.", "In fruit.", "n/a", "In young fruit.", "Sterile", "Buds & Fruiting", "Fruit", "Cone", "In fruit, just past flowering.", "Fruiting (very young)", "Fruiting?", "In fruit. Fruits green with reddish, scarious margin.", "FFR", "budding", "no data", "End of flower and fruit, mature seeds.", "fruit", "Buds & remnants", "Fruiting & with buds", "Buds only?", "Fruit Present", "vegetative", "In fruit, few nutlets remaining", "fruit & leaves", "Fruits Present", "Fruits Only", "Budding Only", "mostly not yet flowering", "unk", "In immature fruit.", "In fruit", "in fruit", "Bolting to early fruit.")
+flowering_cch2 <- sonoran_cch2[!reproductiveCondition %in% non_repoductive_strings]
+
+# Remove data without eventDate
+flowering_cch2 <- flowering_cch2[!is.na(eventDate)]
+
+# Remove data without lon lat 
+flowering_cch2 <- flowering_cch2[!is.na(decimalLatitude)]
+flowering_cch2 <- flowering_cch2[!is.na(decimalLongitude)]
+```
+Trim to the exact Sonoran Shapefile Boundary 
+```{r}
+# Make our inat data spatial 
+flowering_cch2_sf <- st_as_sf(flowering_cch2,
+                              coords = c("decimalLongitude", "decimalLatitude"),
+                              crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
+                              remove = FALSE)
+
+# Bring in Ecoregion shapefiles 
+na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
+
+# Filter for just the Sonoran Desert & Mojave
+sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+
+# Convert the crs of the inat data to that of the sonoran shapefile
+flowering_cch2_sf <- flowering_cch2_sf %>% 
+  st_transform(crs = st_crs(sonoran_shp))
+
+# Trim
+cch2_fl_sonoran_data <- flowering_cch2_sf[sonoran_shp, ]
+
+```
+
+
+
+Write the processed flowering records out to a file to work with later
+```{r}
+# Drop spatial status 
+cch2_fl_sonoran_data <- cch2_fl_sonoran_data %>% 
+  st_drop_geometry()
+
+class(cch2_fl_sonoran_data)
+
+fwrite(cch2_fl_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/cch2_fl_sonoran_data.csv")
+```
+### Now clean the bee data 
+
+Bring in the cleaned bee dataset produced in Dorey et al. 2023
+```{r}
+cleaned_bees_occur <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/Bee-Cleaned-Data/OutputData/05_cleaned_database.csv")
+```
+
+Check data for flags
+```{r}
+names(cleaned_bees_occur)
+```
+Usual cleaning for my research questions + make it spatial
+```{r}
+# Find fields of interest. 
+names(cleaned_bees_occur)
+bee_occ <- cleaned_bees_occur[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank)]
+
+# Remove data without eventDate
+bee_occ <- bee_occ[!is.na(eventDate)]
+
+# Remove data without lon lat 
+bee_occ <- bee_occ[!is.na(decimalLatitude)]
+bee_occ <- bee_occ[!is.na(decimalLongitude)]
+
+# Make our inat data spatial 
+bee_occ_sf <- st_as_sf(bee_occ,
+                              coords = c("decimalLongitude", "decimalLatitude"),
+                              crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
+                              remove = FALSE)
+
+# Bring in Ecoregion shapefiles 
+na_ecoregions_3 <- sf::read_sf("/home/jt-miller/Gurlab/sliding-phenology/data/raw/shapefiles/NA-level-3-epa-ecoregions/NA_CEC_Eco_Level3.shp")
+
+# Filter for just the Sonoran Desert & Mojave
+sonoran_shp <- subset(na_ecoregions_3, na_ecoregions_3$NA_L3NAME == "Sonoran Desert")
+
+# Convert the crs of the inat data to that of the sonoran shapefile
+bee_occ_sf <- bee_occ_sf %>% 
+  st_transform(crs = st_crs(sonoran_shp))
+
+# Trim
+bee_occ_sonoran_data <- bee_occ_sf[sonoran_shp, ]
+
+```
+
+Write the processed bee records out to a file to work with later
+```{r}
+# Drop spatial status 
+bee_occ_sonoran_data <- bee_occ_sonoran_data %>% 
+  st_drop_geometry()
+
+class(bee_occ_sonoran_data)
+
+fwrite(bee_occ_sonoran_data, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/bee_occ_sonoran_data.csv")
+```
