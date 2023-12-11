@@ -1,0 +1,203 @@
+---
+title: "looking-at-phenesse"
+author: "jt-miller"
+date: "2023-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load Dependencies
+```{r}
+library(data.table)
+library(stringr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r}
+directory <- "/blue/soltis/millerjared/temp-sliding-phen/outputs/phenesse-species-tables-par/"
+file_list <- list.files(directory, full.names = TRUE)
+
+species_lvl_phenometrics <- list()
+for(i in 1:length(file_list)){
+  holding_dt <- fread(file_list[[i]])
+  pattern <-  "(\\d{4}-\\d{4})" # Create a pattern for the date
+  date <- str_extract(file_list[[i]], pattern)
+  holding_dt <- holding_dt[, time_bin := date]
+species_lvl_phenometrics[[i]] <- holding_dt
+}
+species_lvl_phenometrics <- rbindlist(species_lvl_phenometrics, fill = TRUE)
+
+species_lvl_phenometrics2 <- species_lvl_phenometrics[,4:12]
+
+plant_species_lvl_phenometrics <- species_lvl_phenometrics2[taxa == "plant"]
+plant_species_lvl_phenometrics <- plant_species_lvl_phenometrics[!is.na(fiftieth_percentile)]
+bee_species_lvl_phenometrics <- species_lvl_phenometrics[taxa == "bee"]
+bee_species_lvl_phenometrics <- bee_species_lvl_phenometrics[!is.na(fiftieth_percentile)]
+```
+
+Plot Visuals 
+```{r}
+# Create a custom order for the time_bin factor
+factor_variable_ordered <- plant_species_lvl_phenometrics$time_bin[order(plant_species_lvl_phenometrics$time_bin)]
+factor_variable_ordered <- unique(factor_variable_ordered)
+print(unique(plant_species_lvl_phenometrics$time_bin))
+# Reorder the time_bin factor levels
+plant_species_lvl_phenometrics$time_bin <- factor(plant_species_lvl_phenometrics$time_bin, levels = factor_variable_ordered)
+
+# Create boxplots using ggplot
+ggplot(data = plant_species_lvl_phenometrics, mapping = aes(x = time_bin, y = fiftieth_percentile, fill = time_bin)) +
+  geom_boxplot() +
+  labs(title = "Plants Species Level Phenesse Median Boxplots",
+       x = "Time Bins",
+       y = "Medians") + 
+   guides(fill = FALSE) +
+   theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~GID) 
+ 
+ggsave("/blue/soltis/millerjared/temp-sliding-phen/outputs/graphical-outputs/plants-species-level-boxplots.png", width = 20, height = 10)
+ 
+# Create one using ggplot
+plant_grid_241 <- plant_species_lvl_phenometrics[GID == 241]
+ggplot(data = plant_grid_241, mapping = aes(x = time_bin, y = fiftieth_percentile, fill = time_bin)) +
+  geom_boxplot() +
+  labs(title = "Plants Species Level Phenesse Median Boxplots for Grid 241",
+       x = "Time Bins",
+       y = "Medians") + 
+   guides(fill = FALSE) +
+   theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~GID) 
+ 
+ggsave("/blue/soltis/millerjared/temp-sliding-phen/outputs/graphical-outputs/plants-species-level-boxplot-grid-241.png", width = 20, height = 10)
+
+# Create a custom order for the time_bin factor
+factor_variable_ordered <- bee_species_lvl_phenometrics$time_bin[order(bee_species_lvl_phenometrics$time_bin)]
+factor_variable_ordered <- unique(factor_variable_ordered)
+print(unique(bee_species_lvl_phenometrics$time_bin))
+# Reorder the time_bin factor levels
+bee_species_lvl_phenometrics$time_bin <- factor(bee_species_lvl_phenometrics$time_bin, levels = factor_variable_ordered)
+
+ggplot(data = bee_species_lvl_phenometrics, mapping = aes(x = time_bin, y = fiftieth_percentile, fill = time_bin)) +
+  geom_boxplot() +
+  labs(title = "Bees Species Level Phenesse Median Boxplots",
+       x = "Time Bins",
+       y = "Medians") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~GID) + 
+  guides(fill = FALSE)
+
+# Create one using ggplot
+bee_grid_241 <- bee_species_lvl_phenometrics[GID == 241]
+ggplot(data = bee_grid_241, mapping = aes(x = time_bin, y = fiftieth_percentile, fill = time_bin)) +
+  geom_boxplot() +
+  labs(title = "Bees Species Level Phenesse Median Boxplots for Grid 241",
+       x = "Time Bins",
+       y = "Medians") + 
+   guides(fill = FALSE) +
+   theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~GID) 
+
+ggsave("/blue/soltis/millerjared/temp-sliding-phen/outputs/graphical-outputs/bees-species-level-boxplot-grid-241.png", width = 20, height = 10)
+```
+
+### Running a fixed-effect Model 
+```{r}
+# Bin data by grid_cell 
+unique(plant_species_lvl_phenometrics$GID)
+plant_subset_217 <- plant_species_lvl_phenometrics[GID == 217]
+plant_subset_229 <- plant_species_lvl_phenometrics[GID == 229]
+plant_subset_230 <- plant_species_lvl_phenometrics[GID == 230]
+plant_subset_241 <- plant_species_lvl_phenometrics[GID == 241]
+# Temporal Ordering, note that time_index is redundant, but helpful for me to keep track of things. 
+plant_subset_217 <- plant_subset_217 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_subset_229 <- plant_subset_229 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_subset_230 <- plant_subset_230 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+plant_subset_241 <- plant_subset_241 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number()) 
+  
+# Run Fixed-Effect Models
+fixed_lm_phen_p217 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = plant_subset_217)
+fixed_lm_phen_p229 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = plant_subset_229)
+fixed_lm_phen_p230 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = plant_subset_230)
+fixed_lm_phen_p241 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = plant_subset_241)
+
+# Read Summaries
+summary(fixed_lm_phen_p217)
+summary(fixed_lm_phen_p229)
+summary(fixed_lm_phen_p230)
+summary(fixed_lm_phen_p241)
+```
+
+Fixed effects for bees
+```{r}
+# Bin data by grid_cell 
+unique(bee_species_lvl_phenometrics$GID)
+bee_subset_217 <- bee_species_lvl_phenometrics[GID == 217]
+bee_subset_229 <- bee_species_lvl_phenometrics[GID == 229]
+bee_subset_230 <- bee_species_lvl_phenometrics[GID == 230]
+bee_subset_241 <- bee_species_lvl_phenometrics[GID == 241]
+# Temporal Ordering
+bee_subset_217 <- bee_subset_217 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_subset_229 <- bee_subset_229 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_subset_230 <- bee_subset_230 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+bee_subset_241 <- bee_subset_241 %>% 
+  mutate(first_year = str_extract(time_bin, "\\d{4}") %>% as.numeric) %>%  
+  mutate(time_index = abs(1949 - first_year) ) %>% 
+  arrange(first_year) %>% 
+  mutate(time_cell = row_number())
+
+# Run fixed effects models
+fixed_lm_phen_b217 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = bee_subset_217)
+fixed_lm_phen_b229 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = bee_subset_229)
+fixed_lm_phen_b230 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = bee_subset_230)
+fixed_lm_phen_b241 <- lm(fiftieth_percentile ~ time_index + number_of_records, data = bee_subset_241)
+
+# Load Summaries 
+summary(fixed_lm_phen_b217)
+summary(fixed_lm_phen_b229)
+summary(fixed_lm_phen_b230)
+summary(fixed_lm_phen_b241)
+```
+
+Mixed effect model (for a later date)
+```{r}
+library(lme4)
+mixed_lm_phen_p217 <- lmer(fiftieth_percentile ~ time_index + number_of_records + (1|scientificName), data = plant_subset_217)
+anova(mixed_lm_phen_p217)
+summary(mixed_lm_phen_p217)
+```
+
