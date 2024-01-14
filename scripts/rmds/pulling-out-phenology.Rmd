@@ -482,7 +482,7 @@ png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/"
 plot(1, type = "n", main = "Plant Community Kernel Density Distribution by Decadal Bin for Grid Cell 241", xlab = "Decadal Bin", ylab = "Density", xlim = c(0, 400), ylim = c(0, 0.015))
 
 # Extract the first 5 and last 5 time bins
-cell_241 <- nested_kde_holder[[4]]
+cell_241 <- nested_kde_holder[[3]]
 time_bins_to_plot <- c(cell_241[1:5], cell_241[(length(cell_241)-4):length(cell_241)])
 
 # Use a color palette for lines
@@ -493,7 +493,7 @@ dark_colors <- brewer.pal(5, "Dark2")
 line_colors <- c(light_colors, dark_colors)
 # Create a vector to store legend labels
 years <- names(time_bins_to_plot)
-
+legend_labels <- c()
 # Now plot these kernel densities iteratively 
 for (w in 1:length(time_bins_to_plot)) {
   spatial_id <- names(time_bins_to_plot[w]) # replace with w
@@ -572,7 +572,7 @@ png(paste0("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/"
 plot(1, type = "n", main = "Bee Community Kernel Density Distribution by Decadal Bin for Grid Cell 241", xlab = "Decadal Bin", ylab = "Density", xlim = c(0, 400), ylim = c(0, 0.05))
 
 # Extract the first 5 and last 5 time bins
-cell_241 <- nested_kde_holder[[4]]
+cell_241 <- nested_kde_holder[[2]]
 time_bins_to_plot <- c(cell_241[1:5], cell_241[(length(cell_241)-4):length(cell_241)])
 
 # Use a color palette for lines
