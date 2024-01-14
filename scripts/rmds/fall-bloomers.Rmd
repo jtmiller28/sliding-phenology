@@ -26,9 +26,70 @@ Fall is arbitrary in terms of when it actually begins, but there is a distinct p
 The first question then is what taxa (that have sufficient data) are considered spring or fall (or both) blooming plants?
 ```{r}
 hpg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv") # load in high coverage flowering plants
+hpg$season <- ifelse(hpg$doy >= 200, "fall", "spring")
+plant_seasons <- hpg[, seasonsPresent := { # creates a new field called seasonPresent
+    if ("spring" %in% season & "fall" %in% season) { # if both spring and fall or present for a species 
+      as.factor("both") # call it both
+    } else if ("spring" %in% season) { # else if spring is present
+      as.factor("spring") # call it spring 
+    } else if ("fall" %in% season) { # else if fall is present
+      as.factor("fall") # call it fall
+    } else NA_integer_ # else it is NA
+}, by = scientificName] # group by scientificName 
 
 
+# Build the ten year bins 
+grid_holder_p <- list()
+gid_p_v <- unique(plant_seasons$GID)
+for(i in 1:length(unique(plant_seasons$GID))){
+  grid_holder_p[[i]] <- plant_seasons[GID == gid_p_v[[i]],]
+}
+
+# Function that uses a for-loop to create the decadal subsets
+decadal_subsetter <- function(dataset, start_year, end_year, bin_size){
+  decadal_subsets <- list() # empty storage list
+for(i in start_year:(end_year - bin_size)){
+  end <- i + bin_size # Our end condition 
+  subset_data <- dataset[year >= i & year <= end, ] # Subsets the data into bins on a decadal sliding scale
+  decadal_subsets[[paste(i, end, sep = "-")]] <- subset_data # Label
+}
+  return(decadal_subsets)
+}
+
+# Set arguments
+start_year <- 1950
+end_year <- 2023
+bin_size <- 10
+gids <- c(217, 229, 230, 241)
+
+
+nested_list_holder_p <- list()
+for(i in 1:length(grid_holder_p)){
+decadal_subsets <- decadal_subsetter(dataset = grid_holder_p[[i]], # Take the ith grid and do the decadal subsetting  
+                  start_year = start_year, 
+                  end_year = end_year, 
+                  bin_size = bin_size)
+nested_list_holder_p[[paste(gids[i], "grid", sep = "-")]] <- decadal_subsets
+}
+
+# Bring lists together
+table_1 <- rbindlist(nested_list_holder_p[[1]], idcol = TRUE) # one dataframe to rule them all
+table_2 <- rbindlist(nested_list_holder_p[[2]], idcol = TRUE)
+table_3 <- rbindlist(nested_list_holder_p[[3]], idcol = TRUE)
+table_4 <- rbindlist(nested_list_holder_p[[4]], idcol = TRUE)
+full_table <- rbind(table_1, table_2, table_3, table_4) # and one to bind them
+
+# Find the representation of seasons among the time bins 
+table_seasons <- full_table[, uniqFallDOYobs := sum(!duplicated(doy[doy >= 200])), by = .(scientificName, .id)] # sum up unique doy equal to or past 200
+table_seasons <- table_seasons[, uniqSpringDOYobs := sum(!duplicated(doy[doy < 200])), by = .(scientificName, .id)] # sum up unique doy less than 200
+
+plant_blooming_period <- table_seasons[, bloom_period := ifelse(uniqSpringDOYobs >= 5 & uniqFallDOYobs >= 5, "opportunistic bloomer",
+                                       ifelse(uniqSpringDOYobs >= 5 & uniqFallDOYobs < 5, "spring bloomer",
+                                              ifelse(uniqSpringDOYobs < 5 & uniqFallDOYobs >= 5, "fall bloomer",
+                                                     "unknown"))), by = .(scientificName, .id)]
+
+test <- plant_blooming_period[bloom_period == "fall bloomer"]
 ```
 
 
-
+From just some playing around with the numbers, an interesting fall bloomer is Eriogonum wrightii, wrights buckwheat. It appears to be a fall bloomer that is occasionally pushed into the next year. Taxonomically I think I could also collapse it so that all the varities are included in as one species, giving appropriate coverage. 
