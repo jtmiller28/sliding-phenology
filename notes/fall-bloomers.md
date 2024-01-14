@@ -1,4 +1,4 @@
-Fall Bloomers notes:
+### Fall Bloomers notes:
 
 Of particular interest is the wide shift we see among the fall blooming taxa within the Sonoran Desert. These havent been discussed in the literature nearly as much as the spring shifts, but could represent important phenological shifts to impact desert ecology. 
 
