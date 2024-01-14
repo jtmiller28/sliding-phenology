@@ -1,0 +1,34 @@
+---
+title: "fall-bloomers"
+author: "jt-miller"
+date: "2024-01-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Fall Bloomers 
+The initial sliding window analysis indicated some interesting trends on the shifts in the fall. At the community level, there seems to be a shift towards later flowering periods. This is a relatively unexplored topic in desert phenology and could have significant implications on these taxa's ecology. <br>
+
+Here, I will pull out the taxa that can be sufficiently described as fall blooming taxa by the data and assess species level variation in these phenological trends. 
+
+Load Libraries
+```{r}
+library(data.table)
+library(tidyverse)
+```
+
+### Fall subsetting 
+Fall is arbitrary in terms of when it actually begins, but there is a distinct period for when early and later (in doy) flowering events occur. Looking at my previous analysis, for plants it appears there is a local minimum ~200 doy. As a first run we will define fall flowering plants as those that bloom >= 200 doy. <br>
+
+The first question then is what taxa (that have sufficient data) are considered spring or fall (or both) blooming plants?
+```{r}
+hpg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv") # load in high coverage flowering plants
+
+
+```
+
+
+
