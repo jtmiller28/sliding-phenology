@@ -6,7 +6,8 @@ To assess these trends: <br>
 1) We need to subset the data to represent taxa that have sufficient blooming records within the Fall. <br>
 	Keeping in mind: <br>
 		a. What is enough to be classified as a taxa that reliably blooms in the fall? <br>
-			- Take the taxa with >3 records within the fall and compare time bins (simply do a test that asks whether they are blooming consistently in the fall or not. <br>
+			- Take the taxa with ~~>3~~ >5 records within the fall (called fall bloomers)  and compare time bins ~~(simply do a test that asks whether they are blooming consistently in the fall or not~~ created a field called bloom period that noted whether the species per time bin was an opportunistic bloomer, fall bloomer, spring bloomer, or unknown based on 5 or more record thresholds.  <br>
+			- 
 		b. Enough data...5 taxa was our cut off. We could choose to do what we did last time and assess the community level trends, however; this may miss out on all of the underlying (and interesting) biology. We should probably try to find some well represented indicator species across (most) time bins to build the analysis. <br>
 		c. What is fall? There are probably some interesting ways to assess this, however; After looking at the initial trends plotted a simple anwser could be that its anything =>200 doy. <br>
 
