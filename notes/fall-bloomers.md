@@ -11,5 +11,5 @@ To assess these trends: <br>
 		b. Enough data...5 taxa was our cut off. We could choose to do what we did last time and assess the community level trends, however; this may miss out on all of the underlying (and interesting) biology. We should probably try to find some well represented indicator species across (most) time bins to build the analysis. <br>
 		c. What is fall? There are probably some interesting ways to assess this, however; After looking at the initial trends plotted a simple anwser could be that its anything =>200 doy. <br>
 
-2) Once we have curated a dataset that represents only the fall bloomers, run the sliding window analysis on the phenology of the plants using kde and phenesse. Focus using Phenesse if there is adequate species representation. <br>
+2) Once we have curated a dataset that represents ~~only~~ the fall bloomers (fully or partially on a decadal bin scale) and the opportunistic bloomers, run the sliding window analysis on the phenology of the plants using kde and phenesse. Focus using Phenesse if there is adequate species representation. <br>
 	Issues: fall bloomers *may* be pushed into the winter months (so late that they could appear to be early spring bloomers). This also has implicaitions of how kde (and possibly phenesse) will assess these trends. <br>
