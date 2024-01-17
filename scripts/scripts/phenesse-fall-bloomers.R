@@ -22,8 +22,8 @@ print("library load success")
 
 # Set up Dir ##########################################################################################################################
 args = commandArgs(trailingOnly=TRUE)
-plot_dir <- args[1] # plot dir is "/blue/soltis/millerjared/temp-sliding-phen/outputs/phenesse-species-plots-fall/"
-table_dir <- args[2] # table dir is "/blue/soltis/millerjared/temp-sliding-phen/outputs/phenesse-species-tables-fall/"
+plot_dir <- args[1] # plot dir is "/blue/soltis/millerjared/sliding-phenology/outputs/phenesse-species-plots-fall/"
+table_dir <- args[2] # table dir is "/blue/soltis/millerjared/sliding-phenology/outputs/phenesse-species-tables-fall/"
 
 #######################################################################################################################################
 # Assign Parallel Processing Set-up
