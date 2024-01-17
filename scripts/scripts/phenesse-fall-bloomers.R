@@ -32,7 +32,7 @@ cl <- makeCluster(cores[1]) # Creates copy of R to communicate over sockets
 registerDoParallel(cl) # Register the Parallel Process
 #######################################################################################################################################
 # Load Data
-dt_long <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/fallish-plants.csv")
+dt_long <- fread("/blue/soltis/millerjared/sliding-phenology/data/processed/fallish-plants.csv")
 print("loaded data successfully")
 
 #### Create dataset according to geographic bins
