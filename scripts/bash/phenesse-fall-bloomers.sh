@@ -17,6 +17,6 @@ pwd; hostname; date
 module load R/4.0
 
 #do some (or alot) of coding
-Rscript --vanilla /blue/soltis/millerjared/temp-sliding-phen/phenesse-fall-bloomers.R $1 $2 
+Rscript --vanilla /blue/soltis/millerjared/sliding-phenology/scripts/scripts/phenesse-fall-bloomers.R $1 $2 
 
 ##example for running: sbatch /blue/soltis/millerjared/sliding-phenology/scripts/bash/phenesse-fall-bloomers.sh /blue/soltis/millerjared/sliding-phenology/outputs/phenesse-species-plots-fall/ /blue/soltis/millerjared/sliding-phenology/outputs/phenesse-species-tables-fall/
