@@ -1,0 +1,338 @@
+---
+title: "pulling-phylogeny"
+author: "jt-miller"
+date: "2024-01-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Some code to look at the overall phylogenetic placement of the taxa we are modeling. 
+Previous literature has identified that overall trends in phenology are thought to be shared across the phylogeny for plants (i.e. evolutionary history will influence flowering). We can both:
+1) Test this hypothesis in my datasets.
+2) Evaluate the overall scope of the tree that we are capturing in this analysis. 
+
+Load in Packages 
+```{r}
+library(rotl) # calls the open tree api to give us a rough idea of the current phylogeny, I would still take these with a grain of salt but its not a bad exploratory option
+library(data.table)
+library(ggplot2)
+library(stringr)
+library(tidyverse)
+library(phytools)
+library(ape)
+```
+Load Data
+```{r}
+data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
+fall_bloomers <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/fallish-plants.csv")
+data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv")
+```
+
+Simplify to just names and create a simple subset for illustration purposes 
+```{r}
+#data <- mutate(data, genusName = word(speciesName, 1)) # grab out the resolved genus
+names <- unique(data$scientificName)
+names <- unique(data$speciesName)
+name_subset <- names
+resolved_names <- tnrs_match_names(name_subset) # uses tnrs tool to match up names to a ott_id
+resolved_names2 <- filter(resolved_names, !is.na(unique_name))
+resolved_lineages <- tax_lineage(taxonomy_taxon_info(ott_id(resolved_names), include_lineage = TRUE))
+resolved_lineages2 <- tax_lineage(taxonomy_taxon_info(ott_id(resolved_names2), include_lineage = TRUE))
+df <- data.frame()
+for(i in 1:length(resolved_lineages)){
+  temp_df <- data.frame(rank = resolved_lineages[[i]][1], name = resolved_lineages[[i]][2], ott_id = resolved_lineages[[i]][4])
+  temp_df <- as.data.frame(temp_df)
+  df <- rbind(df, temp_df)
+}
+
+genus_df <- subset(df, df$rank == "genus")
+genus_df <- distinct(genus_df, rank, name, ott_id)
+```
+
+Grab a tree for these tips 
+```{r, fig.width=25, fig.height=95}
+
+#tr <- tol_induced_subtree(ott_ids = ott_id(resolved_names))
+tr <- tol_induced_subtree(ott_ids = genus_df$ott_id)
+tr <- tol_induced_subtree(ott_ids = ott_id(resolved_names2))
+# Set the size of the plotting device
+#phylo_tree <- as.phylo(tr)
+#tree_structure <- tr$edge
+#phylo_tree <- ape::phylo(tree_structure)
+#par(pin = c(5, 5))  # Adjust the values according to your preferences
+#par(mar = c(5, 4, 4, 2) + 0.1)
+#plot(tr, )
+#ggtree(tr, layout="rectangular", open.angle=10, ggs = list(width = 20, height = 15)) +
+  #geom_tiplab()
+par(mar = c(10, 10, 10, 2)) 
+ape::plot.phylo(tr, cex = 1.5, type = "phylogram")
+  
+```
+### Labeling Phylogeny
+In order to address both (1) and (2), it may be helpful to label the phylogeny as a overall visual. 
+```{r}
+named_data_labeled <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv") # see fall-bloomers.Rmd for code that denotes what seasonal bloom period a species is assigned. 
+names <- unique(named_data_labeled$speciesName) # just need the names
+name_subset <- names# for testing purposes only, ignore as a variable change if no subset applied
+resolved_names <- tnrs_match_names(name_subset) # uses tnrs tool to match up names to a ott_id 
+named_data_labeled_d <- distinct(named_data_labeled, speciesName, scientificName, bloom_period) # take only distinct values
+
+scope_labels <- named_data_labeled_d  %>%
+  filter(!bloom_period == "unknown") %>%  # doesnt contribute to known phenology
+  group_by(speciesName) %>%
+  summarise(bloomSpecificity = case_when(
+    n_distinct(bloom_period) == 1 & bloom_period == 'spring bloomer' ~ "spring bloomer",
+    n_distinct(bloom_period) == 1 & bloom_period == 'fall bloomer' ~ "fall bloomer",
+     n_distinct(bloom_period) > 1 ~ "opportunistic bloomer"
+  )) %>% 
+  distinct(speciesName, bloomSpecificity)
+
+scope_labels <- named_data_labeled_d  %>%
+  filter(!bloom_period == "unknown") %>%  # doesnt contribute to known phenology
+  group_by(scientificName) %>%
+  mutate(scientificNameBloomSpecificity = case_when(
+    n_distinct(bloom_period) == 1 & bloom_period == 'spring bloomer' ~ "spring bloomer",
+    n_distinct(bloom_period) == 1 & bloom_period == 'fall bloomer' ~ "fall bloomer",
+     n_distinct(bloom_period) > 1 ~ "opportunistic bloomer"
+  )) %>% 
+  ungroup() %>% 
+  group_by(speciesName) %>% 
+  mutate(speciesNameBloomSpecificity = case_when(
+    n_distinct(bloom_period) == 1 & bloom_period == 'spring bloomer' ~ "spring bloomer",
+    n_distinct(bloom_period) == 1 & bloom_period == 'fall bloomer' ~ "fall bloomer",
+     n_distinct(bloom_period) > 1 ~ "opportunistic bloomer"
+  )) %>% 
+  distinct(scientificName, speciesName, scientificNameBloomSpecificity, speciesNameBloomSpecificity)
+
+# for now, lets just go with the scientificName level of the field 
+scope_labels <- scope_labels %>% 
+  distinct(scientificName, scientificNameBloomSpecificity)
+
+specific_bloomers <- scope_labels %>% 
+  filter(scientificNameBloomSpecificity %in% c("fall bloomer", "spring bloomer"))
+
+name_subset <- specific_bloomers$scientificName
+
+resolved_subset <- tnrs_match_names(name_subset)
+
+in_tree <- is_in_tree(ott_id(resolved_subset))
+in_tree
+# resolved_subset <- filter(resolved_subset, !is.na(unique_name))
+# resolved_subset <- filter(resolved_subset, !flags == "hidden")
+# resolved_subset <- filter(resolved_subset, !flags == "sibling_higher")
+resolved_subset2 <- resolved_subset %>% 
+  filter(!grepl("incertae_sedis", flags)) %>% 
+  #filter(!unique_name == "Parkinsonia (genus in kingdom Archaeplastida)") %>% 
+  filter(!grepl("Parkinsonia", unique_name)) %>% 
+  #filter(!unique_name == "Tidestromia oblongifolia") %>%
+  filter(!grepl("Tidestromia", unique_name)) %>% 
+  #filter(!unique_name == "Salvia vaseyi") %>%
+  filter(!grepl("Salvia", unique_name)) %>% 
+  #filter(!unique_name == "Salvia carduacea") %>%
+  #filter(!unique_name == "Camissonia brevipes") %>%
+  filter(!grepl("Camissonia", unique_name)) %>%
+  #filter(!unique_name == "Ceanothus perplexans") %>%
+  filter(!grepl("Ceanothus", unique_name)) %>%
+  #filter(!unique_name == "Sphaeralcea") %>%
+  filter(!grepl("Sphaeralcea", unique_name)) %>%
+  #filter(!unique_name == "Sorghum") %>%
+  filter(!grepl("Sorghum", unique_name)) %>%
+  #filter(!unique_name == "Suaeda") %>%
+  filter(!grepl("Suaeda", unique_name)) %>%
+ #filter(!unique_name == "Camissonia pallida") %>%
+  #filter(!unique_name == "Stipa") %>%
+  filter(!grepl("Stipa", unique_name)) %>%
+ # filter(!unique_name == "Chenopodium") %>%
+  filter(!grepl("Chenopodium", unique_name)) %>%
+  #filter(!unique_name == "Camissonia cardiophylla") %>%
+  #filter(!unique_name == "Chaenactis") %>%
+  filter(!grepl("Chaenactis", unique_name)) %>%
+ # filter(!unique_name == "Sarcostemma") %>%
+  filter(!grepl("Sarcostemma", unique_name)) %>%
+  #filter(!unique_name == "Galium") %>%
+  filter(!grepl("Galium", unique_name)) %>%
+ # filter(!unique_name == "Baileya (genus in subkingdom SAR)") %>%
+  filter(!grepl("Baileya", unique_name)) %>%
+  #filter(!unique_name == "Coreopsis") %>%
+  filter(!grepl("Coreopsis", unique_name)) %>%
+  #filter(!unique_name == "Muhlenbergia")
+filter(!grepl("Muhlenbergia", unique_name))
+
+in_tree <- is_in_tree(ott_id(resolved_subset2))
+in_tree
+
+tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_subset))
+  
+
+# remove corrupting branches...?
+resolved_subset <- resolved_subset %>% 
+  filter(!grepl("Baileya", unique_name)) %>% 
+  filter(!grepl("Funastrum", unique_name)) %>% 
+  filter(!grepl("Funastrum", unique_name)) %>% 
+  filter(!grepl("Salvia", unique_name)) %>% 
+  filter(!grepl("Camissonia", unique_name))
+# resolved_subset <- filter(resolved_subset, number_matches == 1)
+# in_tree <- list()
+# for(i in 1:length(resolved_subset$search_string)){
+#   in_tree[[i]] <- is_in_tree(ott_id(subset(resolved_subset, resolved_subset$search_string == resolved_subset$search_string[[i]])))
+# }
+tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_subset))
+# in_tree <- resolved_subset %>% 
+#   mutate(in_tree = is_in_tree(ott_id(resolved_subset)))
+resolved_names_m <- merge(resolved_names, scope_labels, by.x = "unique_name", by.y = "speciesName")
+resolved_names_m <- merge(resolved_subset, scope_labels, by.x = "unique_name", by.y = "speciesName")
+tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_names)) # appends lineages from open tree
+
+#merge(tree_object, names, by = "scientificName")
+# arranged <- resolved_names_m %>% 
+#   arrange(search_string)
+#bloom <- as.factor(resolved_names_m$bloomSpecificity)
+#names(bloom) <- tree_object$tip.label 
+
+#tree_obj_merge <- merge(tree_object)
+
+```
+
+Create some labeled plots 
+```{r}
+ott_ids <- tree_object[[2]]
+ott_ids <- gsub("[^0-9 ]", "", ott_ids)
+ott_names <- gsub("\\d+", "", tree_object[[2]])
+ott_names <- gsub("\\_ott", "", ott_names)
+ott_names <- gsub("_", " ", ott_names)
+tree_df <- data.frame(ott_ids, ott_names)
+trait_df <- merge(tree_df, resolved_names_m, by.x = "ott_names", by.y = "unique_name", all = TRUE)
+trait_df <- select(trait_df, ott_id, ott_names, bloomSpecificity)
+trait_df <- trait_df %>% 
+  mutate(bloomCol = case_when(
+    is.na(bloomSpecificity) ~ "grey", 
+    bloomSpecificity == "spring bloomer" ~ "darkgreen", 
+    bloomSpecificity == "fall bloomer" ~ "darkorange", 
+    bloomSpecificity == "opportunistic bloomer" ~ "goldenrod"
+    
+  ))
+
+# X <- c("green", "orange", "yellow") 
+# ape::plot.phylo(tree_object, cex = 1.5, type = "phylogram", edge.color = sample(X, length(tree_object$edge), replace = TRUE),
+#      edge.width = rep(5, length(tree_object$edge)))
+
+ape::plot.phylo(tree_object, cex = 1.5, type = "phylogram", tip.color = trait_df$bloomCol) # edges are being a pain...
+```
+New plan, new plan: Find representative taxa 
+1) That have the best amount of temporal coverage for year by year phenometric measurements
+```{r}
+named_data_labeled <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv") 
+# 
+flowering_data <- named_data_labeled
+
+
+result_table <- flowering_data %>%
+  group_by(speciesName, year) %>%
+  summarise(
+    condition_satisfied = n() > 5 & n_distinct(doy) >= 3
+  ) %>%
+  group_by(speciesName) %>%
+  summarise(
+    num_years_condition_satisfied = sum(condition_satisfied)
+  )
+
+flowering_data2 <- merge(flowering_data, result_table, by = "speciesName")
+flowering_data3 <- flowering_data2 %>% 
+filter(!bloom_period == "unknown") %>%  # doesnt contribute to known phenology
+  group_by(speciesName) %>%
+  mutate(bloomSpecificity = case_when(
+    n_distinct(bloom_period) == 1 & bloom_period == 'spring bloomer' ~ "spring bloomer",
+    n_distinct(bloom_period) == 1 & bloom_period == 'fall bloomer' ~ "fall bloomer",
+     n_distinct(bloom_period) > 1 ~ "opportunistic bloomer"
+  )) %>% 
+  distinct(speciesName, bloomSpecificity, .keep_all = TRUE)
+
+flowering_data4 <- flowering_data3 %>% 
+  filter(num_years_condition_satisfied >= 25)
+
+name_subset <- flowering_data4$speciesName
+
+resolved_subset <- tnrs_match_names(name_subset)
+resolved_subset2 <- filter(resolved_subset, !ott_id == 5502771)
+resolved_subset2 <- filter(resolved_subset2, !ott_id == 173589)
+tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_subset2)) # appends lineages from open tree
+
+in_tree <- is_in_tree(ott_id(resolved_subset2))
+in_tree
+tr <- tol_induced_subtree(ott_id(resolved_subset)[in_tree])
+
+ape::plot.phylo(tr, cex = 1.5, type = "phylogram") # edges are being a pain...seems the whole tree was pruned...yay
+```
+
+Plotting 
+```{r}
+ott_ids <- tr[[2]]
+ott_ids <- gsub("[^0-9 ]", "", ott_ids)
+ott_names <- gsub("\\d+", "", tr[[2]])
+ott_names <- gsub("\\_ott", "", ott_names)
+ott_names <- gsub("_", " ", ott_names)
+tree_df <- data.frame(ott_ids, ott_names)
+resolved_subset_m <- merge()
+trait_df <- merge(tree_df, resolved_subset, by.x = "ott_names", by.y = "unique_name", all = TRUE)
+trait_df <- select(trait_df, ott_id, ott_names, bloomSpecificity)
+trait_df <- trait_df %>% 
+  mutate(bloomCol = case_when(
+    is.na(bloomSpecificity) ~ "grey", 
+    bloomSpecificity == "spring bloomer" ~ "darkgreen", 
+    bloomSpecificity == "fall bloomer" ~ "darkorange", 
+    bloomSpecificity == "opportunistic bloomer" ~ "goldenrod"
+    
+  ))
+```
+
+```{r}
+data(bird.orders)
+### using random colours and thickness
+plot(bird.orders,
+     edge.color = sample(colors(), length(bird.orders$edge)/2),
+     edge.width = sample(1:10, length(bird.orders$edge)/2, replace = TRUE))
+title("Random colours and branch thickness")
+### rainbow colouring...
+X <- c("red", "orange", "yellow", "green", "blue", "purple")
+plot(bird.orders,
+     edge.color = sample(X, length(bird.orders$edge)/2, replace = TRUE),
+     edge.width = sample(1:10, length(bird.orders$edge)/2, replace = TRUE))
+title("Rainbow colouring")
+plot(bird.orders, type = "c", use.edge.length = FALSE,
+     edge.color = sample(X, length(bird.orders$edge)/2, replace = TRUE),
+     edge.width = rep(5, length(bird.orders$edge)/2))
+segments(rep(0, 6), 6.5:1.5, rep(2, 6), 6.5:1.5, lwd = 5, col = X)
+text(rep(2.5, 6), 6.5:1.5, paste(X, "..."), adj = 0)
+title("Character mapping...")
+plot(bird.orders, "u", font = 1, cex = 0.75)
+data(bird.families)
+plot(bird.families, "u", lab4ut = "axial", font = 1, cex = 0.5)
+plot(bird.families, "r", font = 1, cex = 0.5)
+### cladogram with oblique tip labels
+plot(bird.orders, "c", FALSE, direction = "u", srt = -40, x.lim = 25.5)
+### facing trees with different informations...
+tr <- bird.orders
+tr$tip.label <- rep("", 23)
+layout(matrix(1:2, 1, 2), c(5, 4))
+plot(bird.orders, "c", FALSE, adj = 0.5, no.margin = TRUE, label.offset = 0.8,
+     edge.color = sample(X, length(bird.orders$edge)/2, replace = TRUE),
+     edge.width = rep(5, length(bird.orders$edge)/2))
+text(7.5, 23, "Facing trees with\ndifferent informations", font = 2)
+plot(tr, "p", direction = "l", no.margin = TRUE,
+     edge.width = sample(1:10, length(bird.orders$edge)/2, replace = TRUE))
+### Recycling of arguments gives a lot of possibilities
+### for tip labels:
+plot(bird.orders, tip.col = c(rep("red", 5), rep("blue", 18)),
+     font = c(rep(3, 5), rep(2, 17), 1))
+plot(bird.orders, tip.col = c("blue", "green"),
+     cex = 23:1/23 + .3, font = 1:3)
+co <- c(rep("blue", 9), rep("green", 35))
+plot(bird.orders, "f", edge.col = co)
+plot(bird.orders, edge.col = co)
+layout(1)
+
+```
+
