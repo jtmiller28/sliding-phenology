@@ -1,0 +1,66 @@
+---
+title: "Combining CCH2 Phenological Data with Specimen Data"
+author: "Katie Pearson"
+date: "August 1, 2020"
+description: "This code can be used to combine the specimen data (occurrences.csv) with the phenological data (measurementorfact.csv) downloaded from CCH2 (cch2.org). These materials were made possible by National Science Foundation Award 1802312.
+Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation."
+output: html_document
+---
+
+###Load packages
+```{r}
+library(tidyverse)
+```
+###Load your specimen data
+```{r}
+specimens <- read_csv("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/occurrences.csv")
+```
+
+###Load and attache phenological data
+```{r}
+#Load phenological data
+pheno <- read_csv("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/measurementOrFact.csv", col_types = cols(
+  coreid = col_double(),
+  measurementType = col_character(),
+  measurementTypeID	= col_character(),
+  measurementValue = col_character(),
+  measurementValueID	= col_character(),
+  measurementUnit = col_character(),
+  measurementDeterminedDate = col_character(),
+  measurementDeterminedBy = col_character()
+))
+
+#Convert the one-score-per-line phenological data into a dataframe containing five columns: id, reproductive (TRUE/FALSE), unopen flowers present (TRUE/FALSE), flowers present (TRUE/FALSE), fruit present (TRUE/FALSE)
+pheno_col <- matrix(ncol=5,nrow=length(unique(pheno$coreid)))
+colnames(pheno_col)=c("id","reproductive","unopenFlower","openFlower","fruit")
+pheno_col <- as.data.frame(pheno_col)
+pheno_col$id <-unique(pheno$coreid)
+for(i in 1:dim(pheno)[1]){
+  thisMatch <- match(pheno$coreid[i],pheno_col$id)
+  if (pheno$measurementValue[i]=="sterile"){
+    pheno_col$reproductive[thisMatch]=FALSE
+  }else if(pheno$measurementValue[i]=="reproductive"){
+    pheno_col$reproductive[thisMatch]=TRUE
+  }else if(pheno$measurementType[i]=="Unopen Flower" & pheno$measurementType[i]=="present"){
+    pheno_col$unopenFlower[thisMatch]=TRUE
+  }else if(pheno$measurementType[i]=="Unopen Flower" & pheno$measurementValue[i]=="absent"){
+    pheno_col$unopenFlower[thisMatch]=FALSE
+  }else if(pheno$measurementType[i]=="Open Flower" & pheno$measurementValue[i]=="present"){
+    pheno_col$openFlower[thisMatch]=TRUE
+  }else if(pheno$measurementType[i]=="Open Flower" & pheno$measurementValue[i]=="absent"){
+    pheno_col$openFlower[thisMatch]=FALSE
+  }else if(pheno$measurementType[i]=="Fruit" & pheno$measurementValue[i]=="present"){
+    pheno_col$fruit[thisMatch]=TRUE
+  }else if(pheno$measurementType[i]=="Fruit" & pheno$measurementValue[i]=="absent"){
+    pheno_col$fruit[thisMatch]=FALSE
+  }
+}
+
+#Attach phenological data to specimen data
+spec_pheno <- left_join(specimens, pheno_col, by="id")
+```
+
+###Export new dataframe as csv file
+```{r}
+write.csv(spec_pheno,"/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/phen_occ_joined.csv")
+```

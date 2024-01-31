@@ -99,18 +99,18 @@ sonoran_boundary <- st_boundary(sonoran_latlon)
 
 Read in CCH2 data 
 ```{r}
-sonoran_cch2 <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/occurrences.csv")
+sonoran_cch2 <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-sonoran_2023-11-27_150043_DwC-A/phen_occ_joined.csv")
 ```
 Clean the CCH2 data
 ```{r}
 # Find fields of interest. 
 names(sonoran_cch2)
-sonoran_cch2 <- sonoran_cch2[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank, reproductiveCondition)]
+sonoran_cch2 <- sonoran_cch2[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank, openFlower)]
 
 # Remove non-flowering annotations 
-unique(sonoran_cch2$reproductiveCondition)
-non_repoductive_strings <- c("", "FR", "Fruiting", "fruits", "buds", "Buds only", "UNK", "Buds","Last year?s fruits.", "In fruit.", "n/a", "In young fruit.", "Sterile", "Buds & Fruiting", "Fruit", "Cone", "In fruit, just past flowering.", "Fruiting (very young)", "Fruiting?", "In fruit. Fruits green with reddish, scarious margin.", "FFR", "budding", "no data", "End of flower and fruit, mature seeds.", "fruit", "Buds & remnants", "Fruiting & with buds", "Buds only?", "Fruit Present", "vegetative", "In fruit, few nutlets remaining", "fruit & leaves", "Fruits Present", "Fruits Only", "Budding Only", "mostly not yet flowering", "unk", "In immature fruit.", "In fruit", "in fruit", "Bolting to early fruit.")
-flowering_cch2 <- sonoran_cch2[!reproductiveCondition %in% non_repoductive_strings]
+unique(sonoran_cch2$openFlower)
+# non_repoductive_strings <- c("", "FR", "Fruiting", "fruits", "buds", "Buds only", "UNK", "Buds","Last year?s fruits.", "In fruit.", "n/a", "In young fruit.", "Sterile", "Buds & Fruiting", "Fruit", "Cone", "In fruit, just past flowering.", "Fruiting (very young)", "Fruiting?", "In fruit. Fruits green with reddish, scarious margin.", "FFR", "budding", "no data", "End of flower and fruit, mature seeds.", "fruit", "Buds & remnants", "Fruiting & with buds", "Buds only?", "Fruit Present", "vegetative", "In fruit, few nutlets remaining", "fruit & leaves", "Fruits Present", "Fruits Only", "Budding Only", "mostly not yet flowering", "unk", "In immature fruit.", "In fruit", "in fruit", "Bolting to early fruit.")
+flowering_cch2 <- sonoran_cch2[openFlower == TRUE]
 
 # Remove data without eventDate
 flowering_cch2 <- flowering_cch2[!is.na(eventDate)]
