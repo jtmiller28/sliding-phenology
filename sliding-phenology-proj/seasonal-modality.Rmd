@@ -1,0 +1,414 @@
+---
+title: "Seasonal-Modality: Assessing Phenology Modality for Desert Plants"
+author: "jt-miller"
+date: "2024-01-29"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(ape)
+library(rotl)
+library(truncnorm)
+```
+
+One interesting takeaway from my last semester project was the apparent shifts in fall flowering plants at the community level. While I would like to look deeper into this, the question is a bit challenging as there is a lot of nuance to what blooms in the fall. Very few desert plants are thought to be fully or even primarily fall flowering. Even when filtering down to those plants that only flower in fall, we are left with fewer than 9 taxa that hold only a small temporal scale (>10 years) of relevant phenometrics. 
+```{r pressure, echo=FALSE, fig.cap="Shifts in Kernel Density Estimations for Community Responses across time", out.width = '75%'}
+knitr::include_graphics("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/plant-shifts.png")
+```
+
+To provide a bit of background about this system, its thought that the bimodality of flowering happens due to the seasonal rains. 
+```{r map_ppt, echo=FALSE, out.width = '75%'}
+knitr::include_graphics("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/percipitation-map-sonoran.png")
+```
+```{r months_ppt, echo=FALSE, out.width = '75%'}
+knitr::include_graphics("/home/jt-miller/Gurlab/sliding-phenology/outputs/graphical-outputs/percipitation-across-months-sonoran.png")
+```
+
+This question has sparked my interest of whether we can sufficiently describe the overall distribution of a plant (or bees...) phenology for a species using annotated museum and community-science data. <br> 
+
+From my attempts to describe whether plants were spring flowering or fall flowering, I noticed that quite a few fall into a grouping I'd describe as opportunistic, meaning that they flower both in the Fall & in the Spring. 
+```{r message=FALSE}
+flowering_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv") # This dataset comprises the 4 regions I used for my previous analysis with the addition of a new field designed to assess the overall seasonality of the flowering per species per time bin (sliding window)
+# plant_blooming_period <- table_seasons[, bloom_period := ifelse(uniqSpringDOYobs >= 5 & uniqFallDOYobs >= 5, "opportunistic bloomer",
+#                                        ifelse(uniqSpringDOYobs >= 5 & uniqFallDOYobs < 5, "spring bloomer",
+#                                               ifelse(uniqSpringDOYobs < 5 & uniqFallDOYobs >= 5, "fall bloomer",
+#                                                      "unknown"))), by = .(speciesName, .id)] # This requires that there be at least 5 distinct days of flowering in a season AND less than that much in the opposing season to be season specific (i.e. Fall or Spring bloomer), In the case there are more than 5 for each, we'd call it opportunistic, and if there is not enough data we call it unknown. 
+
+result_table <- flowering_data %>% # some summarizing to check for how many years per species we can pull phenometrics on
+  group_by(speciesName, year) %>%
+  summarise(
+    condition_satisfied = n() > 5 & n_distinct(doy) >= 3
+  ) %>%
+  group_by(speciesName) %>%
+  summarise(
+    num_years_condition_satisfied = sum(condition_satisfied)
+  )
+
+flowering_data2 <- merge(flowering_data, result_table, by = "speciesName") # merge datasets to account for years w/pheno
+
+flowering_summary <- flowering_data2 %>% # Find the overall trend of seasonal flowering periods (called bloomSpecificity)
+  filter(!bloom_period == "unknown") %>%  # Unks wont contribute
+  group_by(speciesName) %>% # by species
+  mutate(bloomSpecificity = case_when(
+    n_distinct(bloom_period) == 1 & bloom_period == 'spring bloomer' ~ "spring bloomer", # if only spring then spring
+    n_distinct(bloom_period) == 1 & bloom_period == 'fall bloomer' ~ "fall bloomer", # if only fall then fall
+     n_distinct(bloom_period) > 1 ~ "opportunistic bloomer" # if more than just spring or fall, then opportunistic 
+  )) %>% 
+  distinct(speciesName, bloomSpecificity, .keep_all = TRUE) # retain specific names 
+
+# Show some Sample distributions 
+spring_flower <- flowering_data2[speciesName == "Chaenactis fremontii"] 
+fall_flower <- flowering_data2[speciesName == "Boerhavia wrightii"] 
+opportunistic_flower <- flowering_data2[speciesName == "Justicia californica"]
+ggplot(data= spring_flower, aes(x = doy)) + 
+  geom_histogram(bins = 200) + 
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Spring Flowering Plant Example Chaenactis fremontii") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+   geom_vline(xintercept = 200, linetype = "dashed", color = "red")
+ggplot(data= fall_flower, aes(x = doy)) + 
+  geom_histogram(bins = 200) + 
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Fall Flowering Plant Example Boerhavia wrightii") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+   geom_vline(xintercept = 200, linetype = "dashed", color = "red")
+
+ggplot(data= opportunistic_flower, aes(x = doy)) + 
+  geom_histogram(bins = 200) + 
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Opportunistic(?) Flowering Plant Example Justicia californica") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+   geom_vline(xintercept = 200, linetype = "dashed", color = "red")
+```
+You'll notice that even among the 'fall' and 'spring' plants there was some leeway (as defined by my arbitrary 200th doy boundary and requirement of greater than 5 distinct doy samples). I think this 'opportunist' strategy may be an interesting question, best evaluated by looking at the modality of distributions among taxa across years. <br> 
+
+I also am interested in the question of how conserved phenology is across evolutionary history (whether we pick up phylogenetic signal or not). Its been found in work across temperate systems, but to my knowledge is lacking in desert systems. 
+```{r fig.height=100, fig.width=25, message=FALSE, warning=FALSE}
+# Build a synthetic supertree with opentree to get a glimpse of how seasonal flowering is topologically distributed 
+name_subset <- flowering_summary$speciesName # create a speciesName vector from our distinct name df
+resolved_subset <- tnrs_match_names(name_subset) # match with tnrs tool (not a big fan of this taxonomic backbone...)
+in_tree <- is_in_tree(ott_id(resolved_subset)) # deal with paraphyletic names/nodes
+tr <- tol_induced_subtree(ott_id(resolved_subset)[in_tree]) # Build tree based on those that are compatible
+ott_ids <- tr[[2]] # extract name list for matching
+ott_ids <- gsub("[^0-9 ]", "", ott_ids)
+ott_names <- gsub("\\d+", "", tr[[2]])
+ott_names <- gsub("\\_ott", "", ott_names)
+ott_names <- gsub("_", " ", ott_names)
+tree_df <- data.frame(ott_ids, ott_names) # compile into df
+
+tree_df <- tree_df %>% 
+  rename(speciesName = ott_names) # rename for join simplicity
+
+result_df <- tree_df %>%
+  left_join(flowering_summary, by = "speciesName") # left join on traits
+
+trait_df <- result_df # rename for clarity 
+trait_df <- trait_df[order(match(trait_df$speciesName, tree_df$speciesName)), ] # reorder to ensure propper mapping
+
+trait_df <- select(result_df, ott_ids, speciesName, bloomSpecificity, num_years_condition_satisfied) # select for simplicity 
+trait_df <- trait_df %>% # create some nice colors for trait mapping
+  mutate(bloomCol = case_when(
+    is.na(bloomSpecificity) ~ "grey", 
+    bloomSpecificity == "spring bloomer" ~ "darkgreen", 
+    bloomSpecificity == "fall bloomer" ~ "darkred", 
+    bloomSpecificity == "opportunistic bloomer" ~ "goldenrod"
+    
+  ))
+tr$traits <- trait_df$bloomCol # build into tr objects new list element called traits
+ape::plot.phylo(tr, cex = 1.5, type = "phylogram", tip.color = tr$traits) 
+
+```
+Given these trends, my research question is whether we can determine the modality of flowering for species using museum/community science data. With this I'd like to: <br>
+1) Look at opportunistic flowering strategy in response to abiotic factors (e.g. monsoonal seasons, ppt, temperature) <br>
+2) Link these modality trends to phylogeny. Determine the strength of the phylogenetic signal for these flowering strategies. <br>
+
+### 1. Qualifying modality given these data
+This problem mimics some issues we have in quanitfying occupancy, that is whether the search effort would of been adequate to collect/observe these plants given that they were flowering and present. <br>
+
+Of particular concern is whether sampling is sufficient across the middle of a phenologic distribution to definitively say that we do not expect to see it flowering during that period. 
+```{r}
+# Set up a sample unimodal distribution
+set.seed(100)
+mid_doy <- 183 
+num_samples <- 1000
+random_y_sample <- data.frame(doy = round(rnorm(num_samples, mean = mid_doy, sd = 50)))
+random_y_sample$doy <- pmax(1, pmin(365, random_y_sample$doy))
+ggplot(data= random_y_sample, aes(x = doy)) + 
+  geom_histogram(bins = 200) + 
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Unimodal Normal Distribution with 1000 samples and standard deviation = 30") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+# Adjust for seasonal tail sampling
+spring_samp <- subset(random_y_sample, random_y_sample$doy <=150) # last day of spring...
+fall_samp <- subset(random_y_sample, random_y_sample$doy>= 220)
+
+
+ggplot() + 
+  geom_histogram(data= random_y_sample, aes(x = doy), bins = 200,fill = "lightgrey") +
+  geom_histogram(data= spring_samp, aes(x = doy), bins = 200) +
+  geom_histogram(data= fall_samp, aes(x = doy), bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Unimodal Normal Distribution with 1000 samples and standard deviation = 30\nwith selective seasonal sampling") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+Ways to address this...possibly its a justifying community level sampling question
+```{r}
+comm_samples <- 1000
+sp_samples <- 100
+community_random_sample <- data.frame(doy = round(rnorm(comm_samples, mean = mid_doy, sd = 50)))
+species_level_sample <- data.frame(doy = round(rnorm(sp_samples, mean = mid_doy, sd = 50)))
+ggplot() + 
+  geom_histogram(data= community_random_sample, aes(x = doy, fill = "Community Level Sample"), bins = 200) +
+  geom_histogram(data= species_level_sample, aes(x = doy, fill = "Species Level Sample"), bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Aggregate of X years for community and species\nshowing unimodal distribution") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+
+bimodal_species_distribution <- subset(species_level_sample, species_level_sample$doy <=150 | species_level_sample$doy >= 220)
+
+ggplot() + 
+  geom_histogram(data= community_random_sample, aes(x = doy, fill = "Community Level Sample"), bins = 200) +
+  geom_histogram(data= bimodal_species_distribution, aes(x = doy, fill = "Species Level Sample"), bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Aggregate of X years for community and species\nshowing bimodal distribution") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+```
+Bimodal sampling for more realistic scenarious 
+```{r}
+# Using Mike Belitz's method for building a bimodial distribution (see Beltiz et al. 2020)
+set.seed(1)
+comm_samples <- 1000
+sp_samples <- 100
+bimodal_doy <- c(rtruncnorm(comm_samples * (2/3), a=0, b=365, mean=150, sd=20),
+               rtruncnorm(comm_samples * (1/3), a=0, b=365, mean=220, sd=20))
+comm_bimodal_df <- as.data.frame(bimodal_doy)
+bimodal_sp_doy <- c(rtruncnorm(sp_samples * (2/3), a=0, b=365, mean=150, sd=10),
+               rtruncnorm(sp_samples * (1/3), a=0, b=365, mean=220, sd=10))
+sp_bimodal_df <- as.data.frame(bimodal_sp_doy)
+
+ggplot() + 
+  geom_histogram(data= comm_bimodal_df, aes(x = bimodal_doy, fill = "Community Level Sample"), bins = 200) + 
+  geom_histogram(data= sp_bimodal_df, aes(x = bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(limits = c(0,365))+
+  labs(x = "Day of Year", y = "Number of Individuals") +
+  ggtitle("Sample Case of a True Bimodal Species (Opportunistic)") +
+   scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+```
+### 2. If (1) is achievable, there might be interesting questions with how opportunistic taxa interact with percipitation patterns and temperature in the desert
+I would suspect that these opportunistic taxa are just making the best out of percipitation cues caused by the consistent winter rain & inconsistent but impactful monsoon rains.
+```{r}
+set.seed(1)
+sp_samples <- 100
+bimodal_sp_doy <- c(rtruncnorm(sp_samples * (2/3), a=0, b=365, mean=150, sd=10),
+               rtruncnorm(sp_samples * (1/3), a=0, b=365, mean=220, sd=10))
+sp_bimodal_df <- as.data.frame(bimodal_sp_doy)
+
+ggplot() + 
+  geom_histogram(data= sp_bimodal_df, aes(x = bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(limits = c(0,365))+
+  labs(x = "Day of Year", y = "Number of Individuals") +
+  ggtitle("Sample Case of a True Bimodal Species (Opportunistic)") +
+   scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+
+set.seed(1)
+sp_samples <- 100
+spr_bimodal_sp_doy <- c(rtruncnorm(sp_samples * (2/3), a=0, b=365, mean=150, sd=10),
+               rtruncnorm(sp_samples * 0*(1/3), a=0, b=365, mean=220, sd=10))
+spr_sp_bimodal_df <- as.data.frame(spr_bimodal_sp_doy)
+
+ggplot() + 
+  geom_histogram(data= spr_sp_bimodal_df, aes(x = spr_bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(limits = c(0,365))+
+  labs(x = "Day of Year", y = "Number of Individuals") +
+  ggtitle("Sample Case of a True Bimodal Species (Opportunistic)\nConditions favor spring flowering") +
+   scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+
+set.seed(1)
+sp_samples <- 100
+fall_bimodal_sp_doy <- c(rtruncnorm(sp_samples * 0*(2/3), a=0, b=365, mean=150, sd=10),
+               rtruncnorm(sp_samples * (1/3), a=0, b=365, mean=220, sd=10))
+fall_sp_bimodal_df <- as.data.frame(fall_bimodal_sp_doy)
+
+ggplot() + 
+  geom_histogram(data= fall_sp_bimodal_df, aes(x = fall_bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(limits = c(0,365))+
+  labs(x = "Day of Year", y = "Number of Individuals") +
+  ggtitle("Sample Case of a True Bimodal Species (Opportunistic)\nConditions favor fall flowering") +
+   scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+
+
+```
+Besides looking at just the distribution I thought of using GAMs to model the peaks while adding covariates of interest such as monsoon ppt, temperature, etc. This is a bit challenging as my aggregating methods would probably induce colinearity, though I could cover some representative taxa that have robust phenometrics. 
+
+
+
+
+In LM we model the mean of data as a sum of linear terms (Sum of the linear effects (fixed effects))
+$$
+y_i = \beta_0 + \sum_j \beta_jx_{ji} + \epsilon_i
+$$
+A GAM is a sum of smooth functions or smooths (replace the fixed effects with smooth fxns)
+$$
+y_i = \beta_0 + \sum_j s_j(x_{ji}) + \epsilon_i \\ 
+where, \\
+\epsilon_i \sim N(0, \sigma^2) \\
+y_i \sim Normal
+$$
+Fitting a GAM in R
+```{r eval=FALSE}
+model <- gam(y ~ s(x2) + te(x3, x4), # formula describing the model
+             data = my_data_frame, # the data
+             method = "REML", # or option 'ML', cyclic options are also available. 
+             family = gaussian) # or option something more exotic 
+```
+s() terms are smooths of one or more variables
+te() (tensor product) terms are the smooth equivalents of main effects + interactions
+
+### Splines
+splines are *functions* composed of simpler functions <br> 
+Simpler functions are *basis functions* and the set of basis functions is a *basis* <br> 
+When we model using splines, each basis function b_k has a coefficient Beta_k. So now we're just estimating Beta_k for the parameters to make splines. <br> 
+The resulting spline is a sum of these weighted basis functions, evaluated at the values of x. 
+$$
+s(x) = \sum_{k=1}^K \beta_kb_k(x)
+$$
+So, our resulting spline s(x) is going to be the sum of: our basis function b_k(x) evaluated at the values of our covariates and weighted by the estimated coefficient. <br>
+
+Said another way: by changing the weights on the basis functions (which also just means scaling the basis functions), and then add up the value of all of those basis functions at each value of x -> build a spline. 
+
+### How wiggly should we go (i.e. how do we avoid overfitting?)
+We can measure the complexity of our model to assess this using the integrated squared second derivative of the function (W is wiggliness)...So really this just means we're penalizing the wiggliness.
+$$
+\int_R [f'']^2dx = \beta^TS\beta = W
+$$
+
+
+Example of a GAM (From Gavin Simpson's Webinar)
+```{r message=FALSE, warning=FALSE}
+# load libraries
+library("curl")
+library('here')
+library('mgcv')
+library('gratia')
+library('ggplot2')
+library('purrr')
+library('mvnfast')
+library("tibble")
+library('gganimate')
+library('tidyr')
+library("knitr")
+library("viridis")
+library('readr')
+library('dplyr')
+library('gganimate')
+library('readr')
+library('dplyr')
+## Load Data
+tmpf <- tempfile()
+curl_download("https://www.metoffice.gov.uk/hadobs/hadcrut4/data/current/time_series/HadCRUT.4.6.0.0.annual_nh.txt", tmpf)
+gtemp <- read.table(tmpf, colClasses = rep("numeric", 12))[, 1:2] # only want some of the variables
+names(gtemp) <- c("Year", "Temperature")
+gtemp <- as_tibble(gtemp)
+
+## Plot
+gtemp_plt <- ggplot(gtemp, aes(x = Year, y = Temperature)) +
+    geom_line() + 
+    geom_point() +
+    labs(x = 'Year', y = expression(Temeprature ~ degree*C))
+gtemp_plt
+
+p <- c(1,3,8,15)
+N <- 300
+newd <- with(gtemp, data.frame(Year = seq(min(Year), max(Year), length = N)))
+polyFun <- function(i, data = data) {
+    lm(Temperature ~ poly(Year, degree = i), data = data)
+}
+mods <- lapply(p, polyFun, data = gtemp)
+pred <- vapply(mods, predict, numeric(N), newdata = newd)
+colnames(pred) <- p
+newd <- cbind(newd, pred)
+polyDat <- gather(newd, Degree, Fitted, - Year)
+polyDat <- mutate(polyDat, Degree = ordered(Degree, levels = p))
+gtemp_plt + geom_line(data = polyDat, mapping = aes(x = Year, y = Fitted, colour = Degree),
+                      size = 1.5, alpha = 0.9) +
+    scale_color_brewer(name = "Degree", palette = "PuOr") +
+    theme(legend.position = "right")
+
+## Load Data
+tmpf <- tempfile()
+curl_download("https://www.metoffice.gov.uk/hadobs/hadcrut4/data/current/time_series/HadCRUT.4.6.0.0.annual_nh.txt", tmpf)
+gtemp <- read.table(tmpf, colClasses = rep("numeric", 12))[, 1:2] # only want some of the variables
+names(gtemp) <- c("Year", "Temperature")
+gtemp <- as_tibble(gtemp)
+
+m <- gam(Temperature ~ s(Year), data = gtemp, method = 'REML')
+summary(m)
+N <- 300
+newd <- as_tibble(with(gtemp, data.frame(Year = seq(min(Year), max(Year), length = N))))
+pred <- as_tibble(as.data.frame(predict(m, newdata = newd, se.fit = TRUE,
+                                        unconditional = TRUE)))
+pred <- bind_cols(newd, pred) %>%
+    mutate(upr = fit + 2 * se.fit, lwr = fit - 2*se.fit)
+
+ggplot(gtemp, aes(x = Year, y = Temperature)) +
+    geom_point() +
+    geom_ribbon(data = pred,
+                mapping = aes(ymin = lwr, ymax = upr, x = Year), alpha = 0.4, inherit.aes = FALSE,
+                fill = "#fdb338") +
+    geom_line(data = pred,
+              mapping = aes(y = fit, x = Year), inherit.aes = FALSE, size = 1, colour = "#025196") +
+    labs(x = 'Year', y = expression(Temeprature ~ degree*C))
+```
+
