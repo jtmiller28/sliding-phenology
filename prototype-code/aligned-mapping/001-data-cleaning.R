@@ -1,10 +1,10 @@
 ### Data Cleaning for Phenology data that matches some of Vaughn Shirey's work in case of overlap
 library(data.table)
-library(tidyverse)
+library(dplyr)
 
 ### iNaturalist Annotated Records
 # Bring in the inat annotated records by phenobase
-inat_obs <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/phenobase-observations-dwca/observations.csv")
+inat_obs <- fread("./sliding-phenology/data/raw/phenobase-observations-dwca/observations.csv")
 # Look for meaningful subsets
 unique(inat_obs$datasetName) # We can create datasets that are research grade or not by filtering for "iNaturalist research-grade observations"
 research_grade_string <- "iNaturalist research-grade observations"
@@ -30,12 +30,12 @@ inat_rg <- inat_w_obs[datasetName == research_grade_string]
 inat_rg_flowering <- inat_rg[!reproductiveCondition %in% non_repoductive_vec]
 
 ## write out these initial datasets
-fwrite(inat_w_obs, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-obs.csv")
-fwrite(inat_rg, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-rg.csv")
-fwrite(inat_rg_flowering, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-rg-flowering.csv")
+fwrite(inat_w_obs, "./sliding-phenology/data/processed/inat-wild-obs.csv")
+fwrite(inat_rg, "./sliding-phenology/data/processed/inat-wild-rg.csv")
+fwrite(inat_rg_flowering, "./sliding-phenology/data/processed/inat-wild-rg-flowering.csv")
 
 ### CCH2 annotated herbarium data
 # Bring in the cch2 data that has been joined with annotations (see supplementary script for this)
-cch2_data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/raw/cch2-aligned-region-data.csv")
-# Select fields of 
-
+cch2_data <- fread("./sliding-phenology/data/raw/cch2-aligned-region-data.csv")
+# Select fields of interest
+cch2_data <- cch2_data[, .(id, informationWithheld, recordedBy, identifiedBy, eventDate, verbatimEventDate, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, scientificName, taxonRank, openFlower)]
