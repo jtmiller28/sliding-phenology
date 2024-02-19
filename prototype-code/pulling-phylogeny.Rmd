@@ -25,14 +25,14 @@ library(phytools)
 library(ape)
 ```
 Load Data
-```{r}
-data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
-fall_bloomers <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/fallish-plants.csv")
+```{r eval=FALSE, include=FALSE}
+#data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
+#fall_bloomers <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/fallish-plants.csv")
 data <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv")
 ```
 
 Simplify to just names and create a simple subset for illustration purposes 
-```{r}
+```{r eval=FALSE, include=FALSE}
 #data <- mutate(data, genusName = word(speciesName, 1)) # grab out the resolved genus
 names <- unique(data$scientificName)
 names <- unique(data$speciesName)
@@ -53,7 +53,7 @@ genus_df <- distinct(genus_df, rank, name, ott_id)
 ```
 
 Grab a tree for these tips 
-```{r, fig.width=25, fig.height=95}
+```{r eval=FALSE, fig.height=95, fig.width=25, include=FALSE}
 
 #tr <- tol_induced_subtree(ott_ids = ott_id(resolved_names))
 tr <- tol_induced_subtree(ott_ids = genus_df$ott_id)
@@ -73,7 +73,7 @@ ape::plot.phylo(tr, cex = 1.5, type = "phylogram")
 ```
 ### Labeling Phylogeny
 In order to address both (1) and (2), it may be helpful to label the phylogeny as a overall visual. 
-```{r}
+```{r eval=FALSE, include=FALSE}
 named_data_labeled <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv") # see fall-bloomers.Rmd for code that denotes what seasonal bloom period a species is assigned. 
 names <- unique(named_data_labeled$speciesName) # just need the names
 name_subset <- names# for testing purposes only, ignore as a variable change if no subset applied
@@ -197,7 +197,7 @@ tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_names)) # appends l
 ```
 
 Create some labeled plots 
-```{r}
+```{r eval=FALSE, include=FALSE}
 ott_ids <- tree_object[[2]]
 ott_ids <- gsub("[^0-9 ]", "", ott_ids)
 ott_names <- gsub("\\d+", "", tree_object[[2]])
@@ -253,42 +253,98 @@ filter(!bloom_period == "unknown") %>%  # doesnt contribute to known phenology
 flowering_data4 <- flowering_data3 %>% 
   filter(num_years_condition_satisfied >= 25)
 
-name_subset <- flowering_data4$speciesName
+name_subset <- flowering_data3$speciesName
 
 resolved_subset <- tnrs_match_names(name_subset)
-resolved_subset2 <- filter(resolved_subset, !ott_id == 5502771)
-resolved_subset2 <- filter(resolved_subset2, !ott_id == 173589)
-tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_subset2)) # appends lineages from open tree
+# resolved_subset2 <- filter(resolved_subset, !ott_id == 5502771)
+# resolved_subset2 <- filter(resolved_subset2, !ott_id == 173589)
+# tree_object <- tol_induced_subtree(ott_ids = ott_id(resolved_subset2)) # appends lineages from open tree
 
-in_tree <- is_in_tree(ott_id(resolved_subset2))
+in_tree <- is_in_tree(ott_id(resolved_subset))
 in_tree
 tr <- tol_induced_subtree(ott_id(resolved_subset)[in_tree])
 
-ape::plot.phylo(tr, cex = 1.5, type = "phylogram") # edges are being a pain...seems the whole tree was pruned...yay
+#ape::plot.phylo(tr, cex = 1.5, type = "phylogram") # edges are being a pain...seems the whole tree was pruned...yay
 ```
 
 Plotting 
-```{r}
+```{r, fig.width=25, fig.height=95}
 ott_ids <- tr[[2]]
 ott_ids <- gsub("[^0-9 ]", "", ott_ids)
 ott_names <- gsub("\\d+", "", tr[[2]])
 ott_names <- gsub("\\_ott", "", ott_names)
 ott_names <- gsub("_", " ", ott_names)
 tree_df <- data.frame(ott_ids, ott_names)
-resolved_subset_m <- merge()
-trait_df <- merge(tree_df, resolved_subset, by.x = "ott_names", by.y = "unique_name", all = TRUE)
-trait_df <- select(trait_df, ott_id, ott_names, bloomSpecificity)
+
+tree_df <- tree_df %>% 
+  rename(speciesName = ott_names)
+
+result_df <- tree_df %>%
+  left_join(flowering_data3, by = "speciesName")
+
+trait_df <- result_df
+
+#resolved_subset_m <- merge(resolved_tr_subset, flowering_data3, by.x = "unique_name", by.y = "speciesName")
+
+#trait_df <- merge(tree_df, flowering_data3, by.x = "ott_names", by.y = "speciesName",)
+tr # try storing the list into this tree objM
+# Sort the merged dataframe based on the order of ott_names in tree_df
+trait_df <- trait_df[order(match(trait_df$speciesName, tree_df$speciesName)), ]
+
+trait_df <- select(result_df, ott_ids, speciesName, bloomSpecificity, num_years_condition_satisfied)
 trait_df <- trait_df %>% 
   mutate(bloomCol = case_when(
     is.na(bloomSpecificity) ~ "grey", 
     bloomSpecificity == "spring bloomer" ~ "darkgreen", 
-    bloomSpecificity == "fall bloomer" ~ "darkorange", 
+    bloomSpecificity == "fall bloomer" ~ "darkred", 
     bloomSpecificity == "opportunistic bloomer" ~ "goldenrod"
     
   ))
+
+#ordered_trait_vector <- trait_df$bloomCol[order(match(trait_df$ott_names, trait_df$ott_names))]
+
+tr$traits <- trait_df$bloomCol
+png(filename = "/home/jt-miller/Gurlab/sliding-phenology/outputs/flowering-phylogeny.png", width = 10000/2, height = 10000)
+ape::plot.phylo(tr, cex = 1.5, type = "phylogram", tip.color = tr$traits) # edges are being a pain...
+dev.off()
+
+
+
+```
+How do the phenometrics look?
+```{r, fig.width=25, fig.height=95}
+# trait_df <- trait_df %>% 
+#   mutate(phenometric_scope =
+#            case_when(
+#              num_years_condition_satisfied < 10 ~ "grey",
+#              num_years_condition_satisfied >= 10 & num_years_condition_satisfied < 20 ~ "steelblue",
+#              num_years_condition_satisfied >= 20~ "purple",
+#              TRUE ~ "pink"
+#              
+#            ))
+# 
+# ape::plot.phylo(tr, cex = 1.5, type = "phylogram", tip.color = trait_df$phenometric_scope) # edges are being a pain...
 ```
 
-```{r}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Some sample data for the package ape 
+```{r eval=FALSE, include=FALSE}
 data(bird.orders)
 ### using random colours and thickness
 plot(bird.orders,

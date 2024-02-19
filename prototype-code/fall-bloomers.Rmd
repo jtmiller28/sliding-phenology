@@ -96,6 +96,8 @@ plant_blooming_period <- table_seasons[, bloom_period := ifelse(uniqSpringDOYobs
                                        ifelse(uniqSpringDOYobs >= 5 & uniqFallDOYobs < 5, "spring bloomer",
                                               ifelse(uniqSpringDOYobs < 5 & uniqFallDOYobs >= 5, "fall bloomer",
                                                      "unknown"))), by = .(speciesName, .id)]
+
+fwrite(plant_blooming_period, "/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv")
 ```
 Fall & Opportunistic Bloomers <br> 
 Opportunistic bloomers present two interesting scenarious: Either they are as described and have liable flowering periods that will just bloom during any 'optimal' conditions regardless of temporal constraints OR they could also possibly be an artifact of our abstraction 'fall' and 'spring' e.g. if a species of plant that typically flowers late fall (winter) is pushed into Jan then it would be considered a spring bloomer (still winter really) <br> 

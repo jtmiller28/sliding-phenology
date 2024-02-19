@@ -1,0 +1,66 @@
+---
+title: "modality-validation"
+author: "jt-miller"
+date: "2024-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Some prototyping code on Validating the detection of modality in our incidental datasets...
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+```
+
+One approach to this question is considering detection across an aggregate of years. That is, if sampling was occurring but the species was not detected, then the likelihood of false negatives decreases. If the sampling was not occurring and the species was not detected, then the likelihood of false negatives increases. 
+
+First, lets bring in our data and do some house keeping
+```{r}
+named_data_labeled <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/blooming-period-dataset.csv") 
+
+# filter first day of each month out
+named_data_labeled_f <- named_data_labeled %>% 
+  filter(!day == 1)
+
+# simplify to just inaturalist records to get some estimates of what things look like across large collection scenarios 
+inat_records <- named_data_labeled_f[aggregator == "inat"]
+# Take a slice of years for prototyping 
+inat_records_y <- named_data_labeled_f[year %in% c(2013:2023)]
+# Take a particular grid cell for prototyping
+inat_records_s <- inat_records_y
+
+```
+
+
+```{r}
+
+
+ggplot(data= inat_records_s, aes(x = doy)) + 
+  geom_histogram(bins = 200) + 
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Community Phenology of inaturalist data from 2013-2017") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  facet_wrap(~GID)
+
+justicia_californica <- inat_records_s[speciesName == "Justicia californica"]
+
+ggplot() + 
+  geom_histogram(data= inat_records_s, aes(x = doy), bins = 200,fill = "lightgrey") +
+  geom_histogram(data= justicia_californica, aes(x = doy), bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Comparative of a candidate opportunstic flowerer") +
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_x_continuous(limits = c(0,365))+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  facet_wrap(~GID)
+```
+

@@ -1,0 +1,112 @@
+---
+title: "pulling-out-late-bloomers"
+author: "jt-miller"
+date: "2023-12-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Extracting the late bloomers 
+
+```{r}
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+hpg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/high-coverage-plant-data.csv")
+```
+
+
+```{r}
+# plant taxa
+grid_holder_p <- list()
+gid_p_v <- unique(hpg$GID)
+for(i in 1:length(unique(hpg$GID))){
+  grid_holder_p[[i]] <- hpg[GID == gid_p_v[[i]],]
+}
+
+# Function that uses a for-loop to create the decadal subsets
+decadal_subsetter <- function(dataset, start_year, end_year, bin_size){
+  decadal_subsets <- list() # empty storage list
+for(i in start_year:(end_year - bin_size)){
+  end <- i + bin_size # Our end condition 
+  subset_data <- dataset[year >= i & year <= end, ] # Subsets the data into bins on a decadal sliding scale
+  decadal_subsets[[paste(i, end, sep = "-")]] <- subset_data # Label
+}
+  return(decadal_subsets)
+}
+
+# Set arguments
+start_year <- 1950
+end_year <- 2023
+bin_size <- 10
+gids <- c(217, 229, 230, 241)
+
+
+nested_list_holder_p <- list()
+for(i in 1:length(grid_holder_p)){
+decadal_subsets <- decadal_subsetter(dataset = grid_holder_p[[i]], # Take the ith grid and do the decadal subsetting  
+                  start_year = start_year, 
+                  end_year = end_year, 
+                  bin_size = bin_size)
+nested_list_holder_p[[paste(gids[i], "grid", sep = "-")]] <- decadal_subsets
+}
+
+# Bring lists together
+table_1 <- rbindlist(nested_list_holder_p[[1]], idcol = TRUE) # one dataframe to rule them all
+table_2 <- rbindlist(nested_list_holder_p[[2]], idcol = TRUE)
+table_3 <- rbindlist(nested_list_holder_p[[3]], idcol = TRUE)
+table_4 <- rbindlist(nested_list_holder_p[[4]], idcol = TRUE)
+full_table <- rbind(table_1, table_2, table_3, table_4) # and one to bind them
+
+
+```
+Now filter for species that have records that occur past doy 200
+- Lets require that there be more than 5 records total in a bin to be represented, and that 3 of those represent distinct days, and that at least 3 of those distinct days are past doy 200. 
+```{r}
+full_table_f <- full_table %>% 
+  rename(time_bin = .id) %>% 
+  group_by(scientificName, GID, time_bin) %>% 
+  mutate(n_sp_occ_in_bin = n()) %>% 
+  mutate(n_doys_in_bin = n_distinct(doy)) %>% 
+  mutate(bloom_period = case_when(
+    doy < 200 ~ "early bloomer",
+    doy >= 200 ~ "late bloomer"
+  )) %>% 
+  filter(n_sp_occ_in_bin >= 5) # Require there be more than 5 records per bin
+
+late_blooming_names <- full_table_f %>%
+  ungroup() %>% 
+  filter(bloom_period == "late bloomer") %>%
+  distinct(scientificName)
+
+late_blooming_enough <- full_table_f %>% 
+  ungroup() %>% 
+  group_by(scientificName, GID, time_bin) %>% 
+  filter(bloom_period == "late bloomer") %>% 
+  mutate(n_doys_in_bin_fall = n_distinct(doy)) %>% 
+  filter(n_doys_in_bin_fall >= 3) %>% # require there be more than 3 days of flowering records within the fall time period
+  distinct(scientificName)
+
+filtered_table <- full_table_f %>%
+  filter(scientificName %in% late_blooming_names$scientificName) %>% 
+  filter(scientificName %in% late_blooming_enough$scientificName)
+```
+
+```{r}
+filtered_table_sp <- unique(filtered_table$scientificName) # Grab relevant speceies 
+
+test <- subset(filtered_table, filtered_table$scientificName == "Justicia californica")
+test <- subset(test, test$GID == 241)
+test <-test %>% 
+  ungroup() %>% 
+  distinct(time_bin, .keep_all = TRUE)
+ggplot(data = test, aes(x = time_bin, y = n_sp_occ_in_bin)) + 
+  geom_point()
+  
+```
+
