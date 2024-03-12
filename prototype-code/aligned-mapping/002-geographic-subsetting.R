@@ -2,17 +2,15 @@
 library(data.table)
 library(tidyverse)
 library(sf)
-
+#library(CoordinateCleaner) # currently has install issues on server (Dont use this here, 3/12/2024)
 ## Read in the data
-# inat data
-inat_w_obs <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-obs.csv")
-inat_rg <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-rg.csv")
-inat_rg_flowering <- fread("/home/jt-miller/Gurlab/sliding-phenology/data/processed/inat-wild-rg-flowering.csv")
-
+comb_data <- fread("../data/processed/combined_annotated_phen_data.csv")
+comb_rg_data <- fread("../data/processed/combined_annotated_rg_phen_data.csv")
+comb_rg_flowering_data <- fread("../data/processed/combined_annotated_rg_flowering_phen_data.csv")
 ##### BASEMAP AND ENVIRONMENTAL DATA ##### (Vaughn's Delimitation)
 #### Basemap ####
 PROJ_CRS <- "+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
-sf::sf_use_s2(FALSE) # turning of the autotuned proj 
+sf::sf_use_s2(FALSE) # turning off the autotuned proj 
 # Load a basemap of states/provinces for the study region
 basemap_wgs <- sf::st_read("../data/raw/shapefiles/10m_cultural/10m_cultural/ne_10m_admin_1_states_provinces.shp") %>%
   dplyr::filter(name %in% c("California", "Nevada", "Arizona", "New Mexico", "Utah",
@@ -52,30 +50,41 @@ ggplot() +
   theme_bw() +
   guides(fill = FALSE, alpha = FALSE)
 
+## Run CoordinateCleaner to remove data based on being inside an institution(musuems, botanical gardens, etc) outliers
+comb_data <- CoordinateCleaner::cc_inst(comb_data, 
+                                           lon = "decimalLongitude", 
+                                           lat = "decimalLatitude", 
+                                           species = "scientificName")
+
+comb_data <- CoordinateCleaner::cc_outl(comb_data, 
+                                           lon = "decimalLongitude", 
+                                           lat = "decimalLatitude", 
+                                           species = "scientificName")
 
 
 ## Make the data spatial 
-inat_w_obs_sf <- st_as_sf(inat_w_obs, 
+comb_data_sf <- st_as_sf(comb_data, 
                               coords = c("decimalLongitude", "decimalLatitude"),
                               crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
                               remove = FALSE)
-inat_rg_sf <- st_as_sf(inat_rg, 
+comb_data_rg_sf <- st_as_sf(comb_rg_data, 
                           coords = c("decimalLongitude", "decimalLatitude"),
                           crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
                           remove = FALSE)
-inat_rg_flowering_sf <- st_as_sf(inat_rg_flowering, 
+comb_data_rg_flowering_sf <- st_as_sf(comb_rg_flowering_data, 
                        coords = c("decimalLongitude", "decimalLatitude"),
                        crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs",
                        remove = FALSE)
+
 ## Transform the projection to equal area to match our basemap
-inat_w_obs_sf <- sf::st_transform(inat_w_obs_sf, crs = PROJ_CRS)
-inat_rg_sf <- sf::st_transform(inat_rg_sf, crs = PROJ_CRS)
-inat_rg_flowering_sf <- sf::st_transform(inat_rg_flowering_sf, crs = PROJ_CRS)
+comb_data_sf <- sf::st_transform(comb_data_sf, crs = PROJ_CRS)
+comb_data_rg_sf <- sf::st_transform(comb_data_rg_sf, crs = PROJ_CRS)
+comb_data_rg_flowering_sf <- sf::st_transform(comb_data_rg_flowering_sf, crs = PROJ_CRS)
 
 ## Spatial Joins with hexcells
-inat_w_obs_hexed100 <- sf::st_join(inat_w_obs_sf, hex_100km)
-inat_rg_hexed100 <- sf::st_join(inat_rg_sf, hex_100km)
-inat_rg_flowering_hexed100 <- sf::st_join(inat_rg_flowering_sf, hex_100km)
+comb_data_sf_hexed100 <- sf::st_join(comb_data_sf, hex_100km)
+comb_data_rg_sf_hexed100 <- sf::st_join(comb_data_rg_sf, hex_100km)
+comb_data_rg_flowering_sf_hexed100 <- sf::st_join(comb_data_rg_flowering_sf, hex_100km)
 
 ## Remove records without an associated hexcell
 inat_w_obs_hexed100 <- inat_w_obs_hexed100 %>% 
