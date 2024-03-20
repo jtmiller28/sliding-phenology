@@ -4,15 +4,15 @@ library(tidyverse)
 library(sf)
 #library(CoordinateCleaner) # currently has install issues on server (Dont use this here, 3/12/2024)
 ## Read in the data
-comb_data <- fread("../data/processed/combined_annotated_phen_data.csv")
-comb_rg_data <- fread("../data/processed/combined_annotated_rg_phen_data.csv")
-comb_rg_flowering_data <- fread("../data/processed/combined_annotated_rg_flowering_phen_data.csv")
+comb_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/combined_annotated_phen_data.csv")
+comb_rg_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/combined_annotated_rg_phen_data.csv")
+comb_rg_flowering_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/combined_annotated_rg_flowering_phen_data.csv")
 ##### BASEMAP AND ENVIRONMENTAL DATA ##### (Vaughn's Delimitation)
 #### Basemap ####
 PROJ_CRS <- "+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
 sf::sf_use_s2(FALSE) # turning off the autotuned proj 
 # Load a basemap of states/provinces for the study region
-basemap_wgs <- sf::st_read("../data/raw/shapefiles/10m_cultural/10m_cultural/ne_10m_admin_1_states_provinces.shp") %>%
+basemap_wgs <- sf::st_read("/home/jtmiller/mybook_jt/sliding-phenology/data/raw/shapefiles/10m_cultural/10m_cultural/ne_10m_admin_1_states_provinces.shp") %>%
   dplyr::filter(name %in% c("California", "Nevada", "Arizona", "New Mexico", "Utah",
                             "Colorado", "Texas", "Oklahoma", "Sonora", "Chihuahua",
                             "Coahuila", "Nuevo León", "Tamaulipas", "Baja California", "Baja California Sur",
@@ -20,7 +20,7 @@ basemap_wgs <- sf::st_read("../data/raw/shapefiles/10m_cultural/10m_cultural/ne_
 basemap <- sf::st_transform(basemap_wgs, PROJ_CRS)
 
 #### WWF Biomes ####
-wwf_biomes <- sf::st_read("../data/raw/shapefiles/WWF/official/wwf_terr_ecos.shp") %>%
+wwf_biomes <- sf::st_read("/home/jtmiller/mybook_jt/sliding-phenology/data/raw/shapefiles/WWF/official/wwf_terr_ecos.shp") %>%
   sf::st_crop(basemap_wgs) %>%
   sf::st_intersection(basemap_wgs) %>%
   dplyr::filter(BIOME %in% c(12, 13)) %>%
@@ -51,15 +51,15 @@ ggplot() +
   guides(fill = FALSE, alpha = FALSE)
 
 ## Run CoordinateCleaner to remove data based on being inside an institution(musuems, botanical gardens, etc) outliers
-comb_data <- CoordinateCleaner::cc_inst(comb_data, 
-                                           lon = "decimalLongitude", 
-                                           lat = "decimalLatitude", 
-                                           species = "scientificName")
+# comb_data <- CoordinateCleaner::cc_inst(comb_data, 
+#                                            lon = "decimalLongitude", 
+#                                            lat = "decimalLatitude", 
+#                                            species = "scientificName")
 
-comb_data <- CoordinateCleaner::cc_outl(comb_data, 
-                                           lon = "decimalLongitude", 
-                                           lat = "decimalLatitude", 
-                                           species = "scientificName")
+# comb_data <- CoordinateCleaner::cc_outl(comb_data, 
+#                                            lon = "decimalLongitude", 
+#                                            lat = "decimalLatitude", 
+#                                            species = "scientificName")
 
 
 ## Make the data spatial 
@@ -87,29 +87,29 @@ comb_data_rg_sf_hexed100 <- sf::st_join(comb_data_rg_sf, hex_100km)
 comb_data_rg_flowering_sf_hexed100 <- sf::st_join(comb_data_rg_flowering_sf, hex_100km)
 
 ## Remove records without an associated hexcell
-inat_w_obs_hexed100 <- inat_w_obs_hexed100 %>% 
+comb_data_sf_hexed100 <- comb_data_sf_hexed100 %>% 
   dplyr::filter(!is.na(hex100_id))
-inat_rg_hexed100 <- inat_rg_hexed100 %>% 
+comb_data_rg_sf_hexed100 <- comb_data_rg_sf_hexed100 %>% 
   dplyr::filter(!is.na(hex100_id))
-inat_rg_flowering_hexed100 <- inat_rg_flowering_hexed100 %>% 
+comb_data_rg_flowering_sf_hexed100 <- comb_data_rg_flowering_sf_hexed100 %>% 
   dplyr::filter(!is.na(hex100_id))
 
 ## Save file as an r obj
-saveRDS(inat_w_obs_hexed100, file = "../data/processed/inat_w_obs_hexed100.rds")
-saveRDS(inat_rg_hexed100, file = "../data/processed/inat_rg_hexed100.rds")
-saveRDS(inat_rg_flowering_hexed100, file = "../data/processed/inat_rg_flowering_hexed100.rds")
+saveRDS(comb_data_sf_hexed100, file = "../data/processed/inat_w_obs_hexed100.rds")
+saveRDS(comb_data_rg_sf_hexed100, file = "../data/processed/inat_rg_hexed100.rds")
+saveRDS(comb_data_rg_flowering_sf_hexed100, file = "../data/processed/inat_rg_flowering_hexed100.rds")
 
 ## Save as a csv
-inat_w_obs_hexed100 <- inat_w_obs_hexed100 %>% 
+comb_data_sf_hexed100 <- comb_data_sf_hexed100 %>% 
   st_drop_geometry()
-inat_rg_hexed100 <- inat_rg_hexed100 %>% 
+comb_data_rg_sf_hexed100 <- comb_data_rg_sf_hexed100 %>% 
   st_drop_geometry()
-inat_rg_flowering_hexed100 <- inat_rg_flowering_hexed100 %>% 
+comb_data_rg_flowering_sf_hexed100 <- comb_data_rg_flowering_sf_hexed100 %>% 
   st_drop_geometry()
 
-fwrite(inat_w_obs_hexed100, file = "../data/processed/inat_w_obs_hexed100.csv")
-fwrite(inat_rg_hexed100, file = "../data/processed/inat_rg_hexed100.csv")
-fwrite(inat_rg_flowering_hexed100, file = "../data/processed/inat_rg_flowering_hexed100.csv")
+fwrite(comb_data_sf_hexed100, file = "../data/processed/comb_data_sf_hexed100")
+fwrite(comb_data_rg_sf_hexed100, file = "../data/processed/comb_data_rg_sf_hexed100")
+fwrite(comb_data_rg_flowering_sf_hexed100, file = "../data/processed/comb_data_rg_flowering_sf_hexed100")
 
 
 
