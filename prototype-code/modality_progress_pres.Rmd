@@ -1,0 +1,662 @@
+---
+title: "Modality Progress Pres"
+author: "JT Miller"
+date: "2024-03-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Testing for Multimodal Peaks in Phenology Data Progress Update
+
+Load Libraries 
+```{r message=FALSE, warning=TRUE}
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(sf)
+```
+### Spatial Setting
+
+Some changes were made to the spatial extent of my work in order to match up with some other work happening in the lab on the lepidoptera side...
+- Extent expanded to include much of the World Wildlife Foundations 'Desert' and 'Mediterranean' bioregions. 
+- All data was repulled for this geographic extent, cleaned, and organized into 100km^2 hex cells (to deal with oddly shaped polygons)
+```{r}
+# Load Basemap
+PROJ_CRS <- "+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+sf::sf_use_s2(FALSE) # turning off the autotuned proj 
+# Load a basemap of states/provinces for the study region
+basemap_wgs <- sf::st_read("/home/jtmiller/mybook_jt/sliding-phenology/data/raw/shapefiles/10m_cultural/10m_cultural/ne_10m_admin_1_states_provinces.shp") %>%
+  dplyr::filter(name %in% c("California", "Nevada", "Arizona", "New Mexico", "Utah",
+                            "Colorado", "Texas", "Oklahoma", "Sonora", "Chihuahua",
+                            "Coahuila", "Nuevo León", "Tamaulipas", "Baja California", "Baja California Sur",
+                            "Sinaloa", "Durango", "Zacatecas", "San Luis Potosí"))
+basemap <- sf::st_transform(basemap_wgs, PROJ_CRS)
+
+good_hexs <- c( 142, 63, 175, 93, 614, 46, 45, 290, 322, 174, 62, 109, 157, 141, 158, 713, 126, 680,  30, 110, 159, 226,  209, 472, 338, 697, 451, 344, 242, 143, 61,  77,  47,  79, 392, 437, 305, 361, 515, 664)
+
+maybe_hexs <- c(649, 534, 259, 648, 160, 303, 535, 300, 595, 489, 309,308, 161, 78, 276, 96, 145, 144)
+
+map <- readRDS("../data/processed/hex_100km.RDS")
+wwf_biomes <- sf::st_read("/home/jtmiller/mybook_jt/sliding-phenology/data/raw/shapefiles/WWF/official/wwf_terr_ecos.shp") %>%
+  sf::st_crop(basemap_wgs) %>%
+  sf::st_intersection(basemap_wgs) %>%
+  dplyr::filter(BIOME %in% c(12, 13)) %>%
+  sf::st_union() %>%
+  sf::st_make_valid() %>%
+  sf::st_sf()
+
+wwf_biomes <- sf::st_transform(wwf_biomes, PROJ_CRS)
+
+# plot for clarity 
+ggplot() +
+  geom_sf(map, mapping = aes()) + 
+  geom_text(data = filter(map, hex100_id %in% good_hexs), aes(label = hex100_id, 
+                                  x = st_coordinates(st_centroid(x))[, 1], 
+                                  y = st_coordinates(st_centroid(x))[, 2]), 
+            size = 2, col = "darkgreen") + 
+  geom_text(data = filter(map, hex100_id %in% maybe_hexs), aes(label = hex100_id, 
+                                  x = st_coordinates(st_centroid(x))[, 1], 
+                                  y = st_coordinates(st_centroid(x))[, 2]), 
+            size = 2, col = "goldenrod") + 
+  theme_bw()
+```
+### Gridcell + Year + Species delimitation
+Previously in the sliding window analysis I had been building 10 year aggregated blocks of data. Unfortunately for alot of these plants + desert biomes this is likely to smooth out alot of the trends of particular interest in terms of enviromental influence. So my decision (for now) is to go for a more traditional year-by-year approach to addressing the distributions. 
+
+Load Data
+```{r}
+# Full data is all of the data from iNaturalist and the California Cosortium (CCH2) Regardless of whether its flowering or not. This is intended to be my background sampling effort. 
+full_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/comb_data_sf_hexed100")
+# Flowering data is the data from iNaturalist and the California Cosortium (CCH2) that has been restricted to only research grade records (for iNaturalist data) and flowering records (for both iNaturalist and CCH2)
+flowering_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/comb_data_rg_flowering_sf_hexed100")
+```
+
+Merge Datasets for analysis 
+```{r}
+# Deal with duplication if present, select fields of interest
+full_data <- full_data %>% 
+  distinct(scientificName, decimalLongitude, decimalLatitude, year, doy, .keep_all = TRUE) %>% 
+  select(id, scientificName, year, doy, decimalLatitude, decimalLongitude, eventDate, coordinateUncertaintyInMeters, family, hex100_id)
+# Deal with duplication if present, select fields of interest
+flowering_data <- flowering_data %>% 
+  distinct(scientificName, decimalLongitude, decimalLatitude, year, doy, .keep_all = TRUE) %>%  
+  select(id, scientificName, year, doy, decimalLatitude, decimalLongitude, eventDate, coordinateUncertaintyInMeters, family, hex100_id, openFlower, reproductiveCondition)
+
+# Change the flowering data to make a bit more succinct in terms of phenology 
+flowering_data <- flowering_data %>% 
+  mutate(flowering = case_when(
+    openFlower == "present" ~ TRUE, 
+    reproductiveCondition != "DNE in cch2" ~ TRUE, 
+    TRUE ~ FALSE
+  )) %>% 
+  select(-reproductiveCondition, -openFlower)
+
+full_data <- full_data %>% 
+  mutate(flowering = NA) # create a place holder
+
+all_data <- merge(full_data, flowering_data, by = c("scientificName", "year", "doy", "decimalLatitude", "decimalLongitude", "id"), all.x = TRUE)
+
+all_data <- all_data %>% 
+  mutate(flowering = case_when(
+    flowering.y == TRUE ~ TRUE, 
+    is.na(flowering.y) ~ FALSE
+  )) %>% 
+  mutate(eventDate = coalesce(eventDate.x, eventDate.y), 
+         coordinateUncertaintyInMeters = coalesce(coordinateUncertaintyInMeters.x, coordinateUncertaintyInMeters.y),
+         family = coalesce(family.x, family.y),
+         hex100_id = coalesce(hex100_id.x, hex100_id.y)) %>% 
+  select(-ends_with(".x"), -ends_with(".y"))
+```
+
+### Major Issue: Temporal Observation Gaps in the Data
+One major issue with taking hexcell-by-year-by-species trends is the sparse sampling that is present in the data. For my question of addressing whether a species has a unimodal vs multimodal phenology, this presents a particular challenge to whether it appears to be multimodal due to just missing sampling (also present is the issue of whether its unimodal due to poor sampling, but still thinking about this)
+```{r warning=FALSE}
+### Example code: 
+# Reload previous steps for clarity
+full_data_eg <- all_data[hex100_id == 175] # change to 175 for eg
+full_data_eg <- full_data_eg[year == 2017] # change to 2017 for eg
+flowering_eg <- full_data_eg[flowering == TRUE]
+
+doy_table <- full_data_eg %>%  
+  group_by(doy) %>% 
+  summarize(n_doy = n(), n_uniq_sp = n_distinct(scientificName), obs_sp_perc = n_distinct(scientificName)/n_doy)
+
+all_doys <- data.frame(doy = 1:365)
+
+complete_doy_table <- full_join(all_doys, doy_table, by = "doy")
+
+doy_f_table <- complete_doy_table %>% 
+  mutate(viable_doy = case_when(
+    (!is.na(obs_sp_perc) & n_doy > 2 & n_uniq_sp > 1) ~ TRUE,
+    is.na(obs_sp_perc) | n_doy <= 2 & n_uniq_sp <= 1 ~ FALSE, 
+    TRUE ~ FALSE))
+
+full_data_egf <- full_data_eg %>% 
+  mutate(doy_usable = case_when(
+    doy %in% doy_f_table$doy ~ TRUE, # if the doy is within the filtered table return TRUE
+    TRUE ~ FALSE # else return false
+  ))
+
+the_data <- merge(doy_f_table, full_data_eg, by = "doy", all.x = TRUE) # the parent data
+
+the_valid_data <- the_data %>% 
+  filter(viable_doy == TRUE) # check, dont use 
+
+the_flowering_data <- the_data %>% 
+  filter(flowering == TRUE) # The flowering data we will use 
+
+# Look for eg that is well documented in this years records...
+# flowering_eg %>% 
+#   group_by(scientificName) %>% 
+#   summarize(n = n()) %>% 
+#   arrange(desc(n))
+
+eg_species_flowering_data <- the_flowering_data %>% 
+  filter(scientificName == "Justicia californica") # change to Justicia californica for eg
+
+filtered_the_data <- na.omit(the_data)
+# Now that we have an example...lets try setting some ground rules. To justify modality lets set a threshold of continuous 10 days of uncertainty between flowering periods to invalidate conclusions for that particular (species + hexcell + year), meaning that we are uncertain as to whether modality can be properly concluded without proper detection.
+
+# Calculate consecutive lengths of runs where viable_doy == FALSE
+consecutive_false <- function(x) {
+  run_lengths <- integer(length(x))
+  current_run <- 0
+  
+  for (i in seq_along(x)) {
+    if (!x[i]) {
+      current_run <- current_run + 1
+      run_lengths[i] <- current_run
+    } else {
+      current_run <- 0
+    }
+  }
+  
+  run_lengths
+}
+
+the_data2 <- the_data %>%
+  distinct(doy, .keep_all = TRUE) %>% 
+  arrange(doy) %>%
+  mutate(run_lengths = consecutive_false(viable_doy))
+
+the_data3 <- the_data2 %>% 
+  select(doy, viable_doy, run_lengths)
+
+### Try Simplifying the problem a bit:
+df <- the_data3 %>% 
+  mutate(transitions = ifelse(run_lengths == 0, 0, 1))
+g_df <- df %>%
+  group_by(grp = rleid(transitions)) %>% 
+  mutate(seq_of_ten =  +(n() >= 10 & all(transitions == 1)))
+
+filtered_the_data <- na.omit(the_data)
+
+scientific_name <- unique(eg_species_flowering_data$scientificName)
+# Test 
+ggplot() + 
+  geom_histogram(data = filtered_the_data, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = eg_species_flowering_data, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(the_data, viable_doy == FALSE), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Community Flowering with missing observation days") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", scientific_name), "Observational Uncertainty"))
+
+
+ggplot() + 
+  geom_histogram(data = filtered_the_data, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = eg_species_flowering_data, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(g_df, seq_of_ten == 1), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Community Flowering with observation error intervals") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", scientific_name), "Observational Uncertainty"))
+```
+### Example of heavy observational data 
+```{r}
+### Example code: 
+# Reload previous steps for clarity
+full_data_eg <- all_data[hex100_id == 175] # change to 175 for eg
+full_data_eg <- full_data_eg[year == 2020] # change to 2017 for eg
+flowering_eg <- full_data_eg[flowering == TRUE]
+
+doy_table <- full_data_eg %>%  
+  group_by(doy) %>% 
+  summarize(n_doy = n(), n_uniq_sp = n_distinct(scientificName), obs_sp_perc = n_distinct(scientificName)/n_doy)
+
+all_doys <- data.frame(doy = 1:365)
+
+complete_doy_table <- full_join(all_doys, doy_table, by = "doy")
+
+doy_f_table <- complete_doy_table %>% 
+  mutate(viable_doy = case_when(
+    (!is.na(obs_sp_perc) & n_doy > 2 & n_uniq_sp > 1) ~ TRUE,
+    is.na(obs_sp_perc) | n_doy <= 2 & n_uniq_sp <= 1 ~ FALSE, 
+    TRUE ~ FALSE))
+
+full_data_egf <- full_data_eg %>% 
+  mutate(doy_usable = case_when(
+    doy %in% doy_f_table$doy ~ TRUE, # if the doy is within the filtered table return TRUE
+    TRUE ~ FALSE # else return false
+  ))
+
+the_data <- merge(doy_f_table, full_data_eg, by = "doy", all.x = TRUE) # the parent data
+
+the_valid_data <- the_data %>% 
+  filter(viable_doy == TRUE) # check, dont use 
+
+the_flowering_data <- the_data %>% 
+  filter(flowering == TRUE) # The flowering data we will use 
+
+# Look for eg that is well documented in this years records...
+# flowering_eg %>% 
+#   group_by(scientificName) %>% 
+#   summarize(n = n()) %>% 
+#   arrange(desc(n))
+
+eg_species_flowering_data <- the_flowering_data %>% 
+  filter(scientificName == "Justicia californica") # change to Justicia californica for eg
+
+filtered_the_data <- na.omit(the_data)
+# Now that we have an example...lets try setting some ground rules. To justify modality lets set a threshold of continuous 10 days of uncertainty between flowering periods to invalidate conclusions for that particular (species + hexcell + year), meaning that we are uncertain as to whether modality can be properly concluded without proper detection.
+
+# Calculate consecutive lengths of runs where viable_doy == FALSE
+consecutive_false <- function(x) {
+  run_lengths <- integer(length(x))
+  current_run <- 0
+  
+  for (i in seq_along(x)) {
+    if (!x[i]) {
+      current_run <- current_run + 1
+      run_lengths[i] <- current_run
+    } else {
+      current_run <- 0
+    }
+  }
+  
+  run_lengths
+}
+
+the_data2 <- the_data %>%
+  distinct(doy, .keep_all = TRUE) %>% 
+  arrange(doy) %>%
+  mutate(run_lengths = consecutive_false(viable_doy))
+
+the_data3 <- the_data2 %>% 
+  select(doy, viable_doy, run_lengths)
+
+### Try Simplifying the problem a bit:
+df <- the_data3 %>% 
+  mutate(transitions = ifelse(run_lengths == 0, 0, 1))
+g_df <- df %>%
+  group_by(grp = rleid(transitions)) %>% 
+  mutate(seq_of_ten =  +(n() >= 10 & all(transitions == 1)))
+
+filtered_the_data <- na.omit(the_data)
+
+scientific_name <- unique(eg_species_flowering_data$scientificName)
+# Test 
+ggplot() + 
+  geom_histogram(data = filtered_the_data, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = eg_species_flowering_data, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(the_data, viable_doy == FALSE), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Community Flowering with missing observation days") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", scientific_name), "Observational Uncertainty"))
+
+
+ggplot() + 
+  geom_histogram(data = filtered_the_data, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = eg_species_flowering_data, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(g_df, seq_of_ten == 1), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Community Flowering with observation error intervals") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", scientific_name), "Observational Uncertainty"))
+```
+### Write functions to accomplish this so we can interate through all of the data efficiently
+```{r}
+
+### Function IdentifyObservationalUncertainty #######################################################################################################
+
+IdentifyObservationalUncertainty <- function(data, target_scientificName, target_year, hex_cell, dir_path_gen, dir_path_spec, dir_path_conf_summary, dir_path_flowering_sp_subset){
+  background_subset <- data[hex100_id == hex_cell & year == target_year] # subset the all background data
+  sp_flowering_subset <- background_subset[scientificName == target_scientificName & flowering == TRUE] # species of interest and flowering
+  
+  doy_table <- background_subset %>%  # create a summary for doy field 
+  group_by(doy) %>% 
+  summarize(n_doy = n(), n_uniq_sp = n_distinct(scientificName), obs_sp_perc = n_distinct(scientificName)/n_doy)
+  
+  all_doys <- data.frame(doy = 1:365) # create a default summary of doys
+  
+  complete_doy_table <- full_join(all_doys, doy_table, by = "doy") # full join the dataframes
+
+  doy_f_table <- complete_doy_table %>% # Create a final doy table that notes viable doy's according to specifications (currently arbitrary)
+    mutate(viable_doy = case_when(
+      (!is.na(obs_sp_perc) & n_doy > 2 & n_uniq_sp > 1) ~ TRUE,
+      is.na(obs_sp_perc) | n_doy <= 2 & n_uniq_sp <= 1 ~ FALSE, 
+      TRUE ~ FALSE))
+  
+  background_subset_f <- background_subset %>% 
+    mutate(doy_usable = case_when(
+      doy %in% doy_f_table$doy ~ TRUE, # if the doy is within the filtered table return TRUE
+      TRUE ~ FALSE # else return false
+      ))
+  
+  ordinal_data <- merge(doy_f_table, background_subset_f, by = "doy", all.x = TRUE) # merge to create a full calendar year relevant set
+  
+  ordinal_data_na_drop <- na.omit(ordinal_data) # drop na's for visualization purposes 
+  
+  # Plot the generalized observation detection error
+  generalized_plot <- ggplot() + 
+  geom_histogram(data = ordinal_data_na_drop, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = sp_flowering_subset, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(ordinal_data, viable_doy == FALSE), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle(paste("Generalized Community coverage and Observation Error for hex cell", hex_cell, "& year", target_year,"\n", "with", target_scientificName, "flowering" )) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", target_scientificName), "Observational Uncertainty"))
+  # Calculate consecutive lengths of runs where viable_doy == FALSE
+consecutive_false <- function(x) {
+  run_lengths <- integer(length(x))
+  current_run <- 0
+  
+  for (i in seq_along(x)) {
+    if (!x[i]) {
+      current_run <- current_run + 1
+      run_lengths[i] <- current_run
+    } else {
+      current_run <- 0
+    }
+  }
+  
+  run_lengths
+}
+
+ordinal_data2 <- ordinal_data %>%
+  distinct(doy, .keep_all = TRUE) %>% 
+  arrange(doy) %>%
+  mutate(run_lengths = consecutive_false(viable_doy))
+
+ordinal_data3 <- ordinal_data2 %>% 
+  select(doy, viable_doy, run_lengths)
+
+df <- ordinal_data3 %>% 
+  mutate(transitions = ifelse(run_lengths == 0, 0, 1))
+g_df <- df %>%
+  group_by(grp = rleid(transitions)) %>% 
+  mutate(seq_of_ten =  +(n() >= 10 & all(transitions == 1)))
+
+# Plot the Special Case observation detection error
+  specialized_plot <- ggplot() + 
+  geom_histogram(data = ordinal_data_na_drop, aes(x = doy, fill = "background"), bins = 200) +
+  geom_histogram(data = sp_flowering_subset, aes(x = doy, fill = "flowering"), bins = 200) +
+  geom_rect(data = subset(g_df, seq_of_ten == 1), aes(xmin = doy - 0.5, xmax = doy + 0.5, ymin = 0, ymax = Inf, fill = "uncertainty"), alpha = 0.2) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle(paste("Specialized Case Community coverage and Observation Error for hex cell", hex_cell, "& year", target_year,"\n", "with", target_scientificName, "flowering" )) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_manual(name = "Legend",
+                    values = c("background" = "lightgrey", "flowering" = "black", "uncertainty" = "darkred"),
+                    labels = c("Community Background Coverage", paste("Flowering Records for", target_scientificName), "Observational Uncertainty"))
+  
+  
+  filestyle_target_scientificName <- gsub(" ", "-", target_scientificName)
+  
+  ggsave(filename = paste0("generalizedObsUncPlot_", hex_cell, "_", target_year, "_", filestyle_target_scientificName, ".png"), plot = generalized_plot, path = dir_path_gen, width = 20, height = 15)
+  ggsave(filename = paste0("specializedObsUncPlot_", hex_cell, "_", target_year, "_", filestyle_target_scientificName, ".png"), plot = specialized_plot, path = dir_path_spec, width = 20, height = 15)
+  
+  # Last steps to build table 
+  confidence_df <- merge(g_df, sp_flowering_subset, all.x = TRUE)
+  confidence_dt <- as.data.table(confidence_df)
+
+  ## Build some coords to eval the between cases 
+  # Identify the sequences of 1s
+  sequences <- rle(g_df$seq_of_ten)
+  seq_start <- cumsum(sequences$lengths) - sequences$lengths + 1
+  seq_end <- cumsum(sequences$lengths)
+
+  # Extract min and max doy values for each sequence
+  min_max_doy <- sapply(seq_start[sequences$values == 1], function(start_idx) {
+    end_idx <- seq_end[which(seq_start == start_idx)]
+    min_max <- c(min(df$doy[start_idx:end_idx]), max(df$doy[start_idx:end_idx]))
+    return(min_max)
+  })
+
+  # Extract coordinates for each sequence
+  coordinates <- lapply(seq_start[sequences$values == 1], function(start_idx) {
+    end_idx <- seq_end[which(seq_start == start_idx)]
+    coords <- g_df[start_idx:end_idx, c("doy", "seq_of_ten")]
+    coords <- coords[coords$seq_of_ten == 1, "doy"]
+    return(coords)
+  })
+
+  if(length(coordinates) > 0){
+  range <- data.table()
+  for(i in 1:length(coordinates)){
+    temp_range <- data.table(start = min(coordinates[[i]]$doy), end = max(coordinates[[i]]$doy))
+    range <- rbind(range, temp_range)
+  }
+  } else{
+    range <- data.frame(start = 0, end = 0)
+  }
+
+  # Test if the sequence of flowering data for a plant species + hexcell + year contains uncertainty 
+  if(min(range$start) != 0 & max(range$end) != 0){
+    sp_min_phen <- min(sp_flowering_subset$doy)
+    sp_max_phen <- max(sp_flowering_subset$doy)
+    sp_known_seq <- seq(sp_min_phen, sp_max_phen)
+
+
+    confidence_test <- ifelse(any(sp_known_seq %in% seq(min(range$start),max(range$end))), TRUE, FALSE)
+  } else{
+    confidence_test <- FALSE
+  }
+
+
+    confidence_summary <- data.table(scientificName = unique(sp_flowering_subset$scientificName), hex100_id = unique(sp_flowering_subset$hex100_id), year = unique(sp_flowering_subset$year), distributionContainsObsUncertainty = confidence_test, lowerUncertaintyDOYBound = min(range$start), upperUncertaintyDOYBound = max(range$end))
+
+fwrite(confidence_summary, file = paste0(dir_path_conf_summary, "confidence-summary_", hex_cell, "_", target_year, "_", filestyle_target_scientificName, ".csv"))
+
+fwrite(sp_flowering_subset, file = paste0(dir_path_flowering_sp_subset, "flowering-record-subset_", hex_cell, "_", target_year, "_", filestyle_target_scientificName, ".csv") )
+         
+}
+
+#####################################################################################################################################################
+```
+
+### Kernel Density Estimation Bandwidth & Multimodal Assessments
+Much of this was summarized in papers (e.g. Silverman 1981) and blog posts (e.g. https://aakinshin.net/posts/kde-bw/)
+
+Background: 
+If we have a sample x = {x_1, x_2,..., x_n} and we want to build a corresponding density plot, we can use a kernel density estimation. 
+$$
+\hat{f}_h(x) = (1/nh)\sum_{i = 1}^{n}K((x -x_i)/h)
+$$
+Where,
+K is the **kernel**: A simple non-negative fxn like the normal or uniform distribution
+h is the **bandwidth**: A real positive number that defines the smoothness of the density plots
+
+We can write a function to do this...
+```{r}
+my_kde <- function(x, data, h, kernel){
+  n <- length(data)
+  f_hat <- rep(0, length(x))
+  for(i in 1:length(x)) {
+    for(j in 1:n){
+      f_hat[i] <- f_hat[i] + kernel((x[i] - data[j])/h) # do the inside of the fxn
+      } # end of j loop
+    f_hat[i] <- f_hat[i]/(n*h) # then do the outside of the fxn
+    } # end of i loop
+  return(f_hat)
+  } # end of function
+
+normal_kernel <- function(u){ # create a guassian (normal) kernel
+  return(dnorm(u))
+}
+```
+
+Try some sample data
+```{r}
+my_data <- c(3,4,7) # some random data for illustration
+#my_x <- seq(min(my_data), max(my_data), length.out = 100) # without bounds (let data decide)
+my_x <- seq(0,10, length.out = 100) # has bounds
+my_h <- 1 # the sample bandwidth 
+
+# calc kernel density estimation 
+kde_output <- my_kde(data = my_data, x = my_x, h = my_h, kernel = normal_kernel)
+
+# Calculate frequencies for the bar plot
+data_freq <- table(my_data)
+
+# Create the plot
+hist(my_data, main = "Underlying Data", xlab = "x", breaks = c(1,2,3,4,5,6,7))
+plot(my_x, kde_output, type = "l", main = "Kernel Density Estimation and Data Distribution",
+     xlab = "x", ylab = "Density", col = "steelblue")
+
+```
+Altering our bandwidth will have the following effects:
+**increasing h** will cause more smoothing and can lead to oversmoothing
+**decreasing h** will cause less smoothing and can lead to undersmoothing
+```{r}
+cols <- c("darkgreen", "steelblue","darkorange")
+hs <- c(0.5, 1, 2)
+
+# Calculate maximum kde value across all iterations
+max_kde <- max(sapply(hs, function(h) max(my_kde(my_x, my_data, h = h, kernel = normal_kernel))))
+
+# Create an empty plot with adjusted y-axis limits
+plot(0, type = "n", xlim = range(my_x), ylim = c(0, max_kde),
+     main = "Kernel Density Estimation Bandwidth Effect on Smoothing", xlab = "x", ylab = "Density")
+
+# Iterate over each bandwidth
+for (i in 1:length(hs)) {
+  # Calculate kernel density estimation
+  kde_output <- my_kde(data = my_data, x = my_x, h = hs[i], kernel = normal_kernel)
+  
+  # Plot the kernel density estimation curve
+  lines(my_x, kde_output, col = cols[i])
+}
+
+# Add legend
+legend("topright", legend = paste("h =", hs), col = cols, lty = 1)
+```
+
+### Bandwidth selectors
+Theres quite a few that have been created, Scott's and Silverman's bandwidth are easy to compute but assume an underlying normal distribution. In reality, we usually are interested in kde's because we dont understand the underlying distribution of the data (at least fully), so some alternatives exist:
+- Unbiased cross-validation
+- Biased cross-validation
+- Maximum likelihood validation
+- Sheather and Jones* 
+
+* = generally favored in some of the papers/blogs I've read. 
+
+Trying some of these...
+```{r}
+silvermans <- density(my_data, bw = "nrd0") # silverman's default, suffers normality assumptions
+b_cross_validation <- density(my_data, bw = "bcv") # biased cross validation
+#unb_cross_validation <- density(my_data, bw = "ucv") # unbiased cross validation (currently doesnt work)
+sheather_and_jones <- density(my_data, bw = "SJ") # sheather & jones via pilot estimation of derivatives (popular for general usage)
+
+plot(sheather_and_jones, col = "darkred", main = "Alternative Bandwidth Selectors", xlab = "x")
+lines(silvermans, col = "steelblue")
+#lines(unb_cross_validation, col = "darkgreen")
+lines(b_cross_validation, col = "lightgreen")
+legend("topright", legend = c("bw = Sheather and Jones", "bw = Silvermans", "bw = Biased Cross Validation"), col = c("darkred", "steelblue", "lightgreen"), lty = 1)
+```
+Generally, Silverman's is discouraged for non-normally distributed data (and therefore its tendency to oversmooth multimodal data). This adds a complexity to my question as Silverman's method is what is developed for the hypothesis testing of multimodality (Silverman 1981). 
+
+Silverman's method for hypothesis testing multimodality goes as follows: 
+H_0: The density f underlying the data has k modes
+H_1: The density f underlying the data has **more** than k modes
+(we can assume k = 1 for a binary test of unimodal vs multimodal)
+
+This translates to something like this: 
+```{r}
+silvermans_test <- function(data){
+  n <- length(data)
+  bw <- density(data)$bw
+  h <- 0.9*bw*n^(-0.2) # build h based on silverman's specifications
+  kde <- density(data, bw = h) # estimate the probability density fxn
+  cv <- sqrt(sum(kde$y^2)/n) / (kde$bw * n^(-1/5)) # compute the critical value
+  return(cv) # return the critical value
+}
+my_data <- c(rnorm(100, mean = 5, sd = 1), rnorm(100, mean = 8.5, sd = 1))
+# For plotting purposes...
+silvermans_kde <- density(my_data, bw = "nrd0")
+plot(silvermans_kde, col = "steelblue", main = "Silverman Smoothed bimodal data...", xlab = "x")
+hist(my_data, breaks = 20, main ="Something Close to Bimodal Data")
+
+# Back to our regular silverman programmming...
+test_statistic <- silvermans_test(my_data) # obtain critical value/test statistic 
+
+print(test_statistic)
+
+# Simulate data under the null hypothesis of unimodality, then compute teh test statistic for each simulated dataset...
+n_sims <- 1000
+sim_test_statistic <- numeric(n_sims)
+for (i in 1:n_sims) {
+  sim_data <- rnorm(length(my_data), mean = mean(my_data), sd = sd(my_data))  # Generate simulated data
+  sim_test_statistic[i] <- silvermans_test(sim_data)  # Calculate test statistic for simulated data
+}
+# Count how many simulated test statistics exceed or are equal to the observed test statistic 
+p_value <- mean(sim_test_statistic >= test_statistic)
+
+print(p_value) # suggests we can't reject the null hypothesis for this data...
+
+
+```
+Test a more darastic case...
+```{r}
+bimodal_data <- c(rnorm(100, mean = 10, sd = 1), rnorm(100, mean = 20, sd = 2))
+
+silvermans_kde <- density(bimodal_data, bw = "nrd0")
+plot(silvermans_kde, col = "steelblue", main = "Try Oversmoothing this Silverman...", xlab = "x")
+hist(bimodal_data, breaks = 20, main ="Very Bimodal Data")
+test_statistic <- silvermans_test(bimodal_data) # obtain critical value/test statistic 
+
+print(test_statistic)
+
+# Simulate data under the null hypothesis of unimodality, then compute teh test statistic for each simulated dataset...
+n_sims <- 1000
+sim_test_statistic <- numeric(n_sims)
+for (i in 1:n_sims) {
+  sim_data <- rnorm(length(bimodal_data), mean = mean(bimodal_data), sd = sd(bimodal_data))  # Generate simulated data
+  sim_test_statistic[i] <- silvermans_test(sim_data)  # Calculate test statistic for simulated data
+}
+# Count how many simulated test statistics exceed or are equal to the observed test statistic 
+p_value <- mean(sim_test_statistic >= test_statistic)
+
+print(p_value) # suggests we can't reject the null hypothesis for this data...
+```
