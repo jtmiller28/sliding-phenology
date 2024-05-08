@@ -1,0 +1,229 @@
+---
+title: "sampling-simus"
+author: "JT Miller"
+date: "2024-05-08"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Some code designed to simulate the underlying data and how accurately we sample from it under different sampling regimes
+
+Libraries 
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(truncnorm)
+library(diptest)
+```
+
+
+```{r}
+# Using Mike Belitz's method for building a bimodial distribution (see Beltiz et al. 2020)
+set.seed(1)
+comm_samples <- 1000
+sp_samples <- 100
+bimodal_comm_doy <- c(rtruncnorm(comm_samples * (2/3), a=0, b=365, mean=150, sd=20),
+               rtruncnorm(comm_samples * (1/3), a=0, b=365, mean=220, sd=20))
+comm_bimodal_df <- as.data.frame(bimodal_comm_doy)
+bimodal_sp_doy <- c(rtruncnorm(sp_samples * (2/3), a=0, b=365, mean=150, sd=10),
+               rtruncnorm(sp_samples * (1/3), a=0, b=365, mean=220, sd=10))
+sp_bimodal_df <- as.data.frame(bimodal_sp_doy)
+
+ggplot() + 
+  geom_histogram(data= comm_bimodal_df, aes(x = bimodal_comm_doy, fill = "Community Level Sample"), bins = 200) + 
+  geom_histogram(data= sp_bimodal_df, aes(x = bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+  scale_y_continuous(expand = c(0,0))+
+  scale_x_continuous(limits = c(0,365))+
+  labs(x = "Day of Year", y = "Number of Individuals") +
+  ggtitle("") +
+   scale_fill_manual(values = c("Community Level Sample" = "lightgrey", "Species Level Sample" = "black")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = NULL))
+```
+Using Hartigans' Dip Test, test 
+H0 = F is a unimodal distribution
+H1 = F is at least a bimodal distribution 
+
+Scenario A: Holding all values constant besides sample size 
+```{r}
+# Constants
+my_sd <- 10
+
+# Vector to vary 
+n_samples <- c(3:50)
+indices <- c(round(n_samples[length(n_samples)/4]), round(n_samples[length(n_samples)/2]), round(n_samples[length(n_samples)/1]))
+#selected_values <- n_samples[indices]
+
+# Result vector for storage
+dip_results <- rep(NA, length(n_samples))
+gs <- list()
+# Create a for-loop simulation 
+for(i in 1:length(n_samples)){
+  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (2/3), a=0, b=365, mean=100, sd=my_sd),
+                      rtruncnorm(n_samples[i] * (1/3), a=0, b=365, mean=212, sd=my_sd))
+  
+  # Perform dip test
+  dip_test <- dip.test(bimodal_sp_doy, simulate.p.value = TRUE)
+  dip_results[i] <- dip_test$p.value
+  
+  # Make a plotting conditional 
+  if(n_samples[i] %in% indices){
+    plot_title <- paste("Distribution given", n_samples[i], "\n Samples taken with Standard Deviation =", my_sd)
+   g <-ggplot() + 
+      geom_histogram(aes(x = bimodal_sp_doy, fill = "Species Level Sample"), bins = 200) + 
+      scale_y_continuous(expand = c(0,0))+
+      scale_x_continuous(limits = c(0,365))+
+      labs(x = "Day of Year", y = "Number of Individuals") +
+      ggtitle(plot_title) +
+      theme_classic() +
+      theme(plot.title = element_text(hjust = 0.5)) +
+      guides(fill = guide_legend(title = NULL))
+   print(g)
+
+  }
+  
+}
+
+# how many samples are needed to recover bimodality from the dataset? 
+max_n_samples <- NULL
+for (i in 1:length(dip_results)) {
+  if(all(dip_results[i:length(dip_results)] < 0.05)) {
+    max_n_samples <- n_samples[i]
+    break
+  }
+}
+
+
+# Plot dip test results
+ggplot() + 
+  geom_point(mapping = aes(x = n_samples, y = dip_results)) +
+  geom_line(mapping = aes(x = n_samples, y = 0.05, color = "Critical Value", linetype = "Critical Value")) + 
+  geom_line(mapping = aes(x = max_n_samples, y = dip_results, color = "Threshold for Sampling", linetype = "Threshold for Sampling")) +
+  scale_color_manual(values = c("Critical Value" = "red", "Threshold for Sampling" = "steelblue")) +
+  scale_linetype_manual(values = c("Critical Value" = "dashed", "Threshold for Sampling" = "solid")) +
+  theme_bw() + 
+  ggtitle("Diptest Probability by Sample Size for Scenario A") +
+  xlab("Number of Samples") + 
+  ylab("P-Value") +
+  theme(
+    plot.title = element_text(hjust = 0.5) # Center the title
+  ) +
+  guides(color = guide_legend(title = "Legend")) # Add legend title
+
+```
+Now simulate this 1000 times and take the maximum of the threshold of sampling to determine what number of samples we should use as our baseline. 
+```{r}
+simu_length <- 100
+max_n_samples_storage <- rep(NA, times = simu_length )
+for(k in 1:simu_length){
+# Constants
+my_sd <- 10
+
+# Vector to vary 
+n_samples <- c(3:50)
+indices <- c(round(n_samples[length(n_samples)/4]), round(n_samples[length(n_samples)/2]), round(n_samples[length(n_samples)/1]))
+#selected_values <- n_samples[indices]
+
+# Result vector for storage
+dip_results <- rep(NA, length(n_samples))
+gs <- list()
+# Create a for-loop simulation 
+for(i in 1:length(n_samples)){
+  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (2/3), a=0, b=365, mean=100, sd=my_sd),
+                      rtruncnorm(n_samples[i] * (1/3), a=0, b=365, mean=212, sd=my_sd))
+  
+  # Perform dip test
+  dip_test <- dip.test(bimodal_sp_doy, simulate.p.value = TRUE)
+  dip_results[i] <- dip_test$p.value
+  
+  
+}
+
+# how many samples are needed to recover bimodality from the dataset? 
+max_n_samples <- NULL
+for (i in 1:length(dip_results)) {
+  if(all(dip_results[i:length(dip_results)] < 0.05)) {
+    max_n_samples <- n_samples[i]
+    break
+  }
+}
+max_n_samples_storage[k] <- max_n_samples
+print(paste("Passed ", k, " iteration"))
+}
+
+simu_100_max <- max(max_n_samples_storage) # 27 was max so use that 
+```
+
+
+Varying the means of the two normal distributions simu 
+```{r}
+# Constants
+my_sd <- 10
+n_samples <- 27
+
+# Vector to vary 
+mu1 <- c(79:152)
+mu2 <- c(200:335)
+
+indices <- c(round(mu1[length(mu1)/4]), round(mu1[length(mu1)/2]), round(mu1[length(mu1)/1]))
+
+# Result vectors for storage
+dip_results <- matrix(NA, nrow = length(mu1), ncol = length(mu2))
+dist_results <- matrix(NA, nrow = length(mu1), ncol = length(mu2))
+
+# Create nested loop simulation 
+for(i in 1:length(mu1)){
+  for(j in 1:length(mu2)){
+    bimodal_sp_doy <- c(rtruncnorm(n_samples* (2/3), a=0, b=365, mean=mu1[i], sd=my_sd),
+                        rtruncnorm(n_samples* (1/3), a=0, b=365, mean=mu2[j], sd=my_sd))
+    
+    # Perform dip test
+    dip_test <- dip.test(bimodal_sp_doy, simulate.p.value = TRUE)
+    dip_results[i,j] <- dip_test$p.value
+    
+    # Calculate distance between mu1 and mu2
+    dist_results[i,j] <- abs(mu1[i] - mu2[j])
+  }
+}
+
+# Plot dip test results
+library(reshape2)
+
+# Melt the matrices for plotting
+dip_results_melted <- melt(dip_results)
+dist_results_melted <- melt(dist_results)
+colnames(dip_results_melted) <- c("mu1", "mu2", "dip_value")
+colnames(dist_results_melted) <- c("mu1", "mu2", "abs_dist")
+
+df_merge <- merge(dip_results_melted, dist_results_melted, by = c("mu1", "mu2"))
+
+df_merge <- df_merge %>% 
+  mutate(id = 1:n())
+# how many samples are needed to recover bimodality from the dataset? 
+df_merge_f <- df_merge %>% 
+  filter(dip_value >= 0.05)
+
+max(df_merge_f$id)
+
+
+max_dist_prior <- subset(df_merge_f, df_merge_f$id == max(df_merge_f$id))
+abs_dist_max <- max_dist_prior$abs_dist
+
+
+# Plot dip test results
+ggplot(df_merge) + 
+  geom_point(mapping = aes(x = abs_dist , y = dip_value, alpha = 0.1)) +
+  geom_line(mapping = aes(x = abs_dist_max, y = dip_value)) +
+  theme_bw() + 
+  ggtitle("Diptest Probability by Sample Size for Scenario A") +
+  xlab("Absolute Distance ") + 
+  ylab("P-Value") +
+  theme(
+    plot.title = element_text(hjust = 0.5) # Center the title
+  ) +
+  guides(color = guide_legend(title = "Legend")) # Add legend title
+
+```
