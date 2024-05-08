@@ -16,6 +16,7 @@ library(tidyverse)
 library(ggplot2)
 library(truncnorm)
 library(diptest)
+library(data.table)
 ```
 
 
@@ -47,11 +48,112 @@ Using Hartigans' Dip Test, test
 H0 = F is a unimodal distribution
 H1 = F is at least a bimodal distribution 
 
-Scenario A: Holding all values constant besides sample size 
+Scenario A: Given a Known Bimodal distribution where, 
+mu1 = S.M 
+mu2 = F.M 
+and, 
+S.M & F.M are the median doy for the spring and fall respectively (derived for a based on the known phenology data for a particular area and year). 
+
+Then, How many n samples are required in order to detect the multimodality that is present in the known Bimodal distribution? 
+
+First, find S.M & F.M from a sample spatial cell & contemporary year with high record counts. 
+```{r}
+flowering_data <- fread("/home/jtmiller/mybook_jt/sliding-phenology/data/processed/comb_data_rg_flowering_sf_hexed100")
+# Deal with duplication if present, select fields of interest
+flowering_data <- flowering_data %>% 
+  distinct(scientificName, decimalLongitude, decimalLatitude, year, doy, .keep_all = TRUE) %>%  
+  select(id, scientificName, year, doy, decimalLatitude, decimalLongitude, eventDate, coordinateUncertaintyInMeters, family, hex100_id, openFlower, reproductiveCondition)
+
+# Change the flowering data to make a bit more succinct in terms of phenology 
+flowering_data <- flowering_data %>% 
+  mutate(flowering = case_when(
+    openFlower == "present" ~ TRUE, 
+    reproductiveCondition != "DNE in cch2" ~ TRUE, 
+    TRUE ~ FALSE
+  )) %>% 
+  select(-reproductiveCondition, -openFlower)
+
+# Subset to a particular spatial cell and time, and assure records correspond to flowering. 
+flowering_data_eg <- flowering_data[hex100_id == 175]
+year_of_interest <- 2022
+flowering_data_eg <- flowering_data_eg[year == year_of_interest]
+flowering_eg <- flowering_data_eg[flowering == TRUE]
+
+# Plot these flowering records 
+ggplot() + 
+  geom_histogram(data = flowering_eg, aes(x = doy, fill = "flowering"), bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Flowering records for the plant community in cell 175 year 2022") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Truncate these Flowering records into Spring and Fall Flowering distributions 
+setDT(flowering_eg)[, Month := format(as.Date(eventDate), "%m")] # Create a month field 
+
+# Identify Spring vs Fall Periods 
+# https://www.desertmuseum.org/programs/flw_flowering.php 
+# Arizona-Desert Museum suggests that spring flowering occurs from mid-Feb to mid-June, and fall is the remainder of the summer through late fall. 
+spring <- c("02","03","04","05","06")
+fall <- c("07","08","09","10","11")
+
+# visualize 
+flowering_eg_spring <- flowering_eg[Month %in% spring]
+flowering_eg_fall <- flowering_eg[Month %in% fall]
+
+ggplot() + 
+  geom_histogram(data = flowering_eg_spring, aes(x = doy),  color = "goldenrod", bins = 200) +
+  geom_histogram(data = flowering_eg_fall, aes(x = doy),color = "darkred", bins = 200) +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Flowering records for the plant community in cell 175 year 2022") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Now Calculate the Median for each period 
+S.M <- median(flowering_eg_spring$doy)
+F.M <- median(flowering_eg_fall$doy)
+
+# Create the function to find mode....
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+spring_mode <- getmode(flowering_eg_spring$doy)
+fall_mode <- getmode(flowering_eg_fall$doy)
+spring_most_data <- flowering_eg_spring[doy == spring_mode]
+fall_most_data <- flowering_eg_fall[doy == fall_mode]
+
+# Visualize
+ggplot() + 
+  geom_histogram(data = flowering_eg_spring, aes(x = doy),  color = "goldenrod", bins = 200) +
+  geom_histogram(data = flowering_eg_fall, aes(x = doy),color = "darkred", bins = 200) +
+  geom_vline(mapping = aes(xintercept = S.M), color = "black", linetype = "dashed") +
+  geom_vline(mapping = aes(xintercept = F.M), color = "black", linetype = "dashed") +
+   geom_text(mapping = aes(x = S.M, y = nrow(spring_most_data), label = "mu1"), vjust = -1, hjust = -0.5, color = "black") +
+  geom_text(mapping = aes(x = F.M, y = nrow(fall_most_data), label = "mu2"), vjust = -1, hjust = -0.5, color = "black") +
+  labs(x = "Day of Year", y = "Number of Flowering Individuals") +
+  ggtitle("Flowering records for the plant community in cell 175 year 2022") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,365)) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Also, calculate the percentages of the data per spring and fall 
+spring_perc_data <- ((nrow(flowering_eg_spring))/(nrow(flowering_eg_spring) + nrow(flowering_eg_fall)))
+fall_perc_data <- ((nrow(flowering_eg_fall))/(nrow(flowering_eg_spring) + nrow(flowering_eg_fall)))
+
+
+```
+
 ```{r}
 # Constants
 my_sd <- 10
-
+S.M <- S.M # defined above 
+F.M <- F.M # defined above
 # Vector to vary 
 n_samples <- c(3:50)
 indices <- c(round(n_samples[length(n_samples)/4]), round(n_samples[length(n_samples)/2]), round(n_samples[length(n_samples)/1]))
@@ -62,8 +164,8 @@ dip_results <- rep(NA, length(n_samples))
 gs <- list()
 # Create a for-loop simulation 
 for(i in 1:length(n_samples)){
-  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (2/3), a=0, b=365, mean=100, sd=my_sd),
-                      rtruncnorm(n_samples[i] * (1/3), a=0, b=365, mean=212, sd=my_sd))
+  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (spring_perc_data), a=0, b=365, mean=S.M, sd=my_sd),
+                      rtruncnorm(n_samples[i] * (fall_perc_data), a=0, b=365, mean=F.M, sd=my_sd))
   
   # Perform dip test
   dip_test <- dip.test(bimodal_sp_doy, simulate.p.value = TRUE)
@@ -132,8 +234,8 @@ dip_results <- rep(NA, length(n_samples))
 gs <- list()
 # Create a for-loop simulation 
 for(i in 1:length(n_samples)){
-  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (2/3), a=0, b=365, mean=100, sd=my_sd),
-                      rtruncnorm(n_samples[i] * (1/3), a=0, b=365, mean=212, sd=my_sd))
+  bimodal_sp_doy <- c(rtruncnorm(n_samples[i] * (spring_perc_data), a=0, b=365, mean=S.M, sd=my_sd),
+                      rtruncnorm(n_samples[i] * (fall_perc_data), a=0, b=365, mean=F.M, sd=my_sd))
   
   # Perform dip test
   dip_test <- dip.test(bimodal_sp_doy, simulate.p.value = TRUE)
@@ -158,15 +260,15 @@ simu_100_max <- max(max_n_samples_storage) # 27 was max so use that
 ```
 
 
-Varying the means of the two normal distributions simu 
+Varying The Medians by +/- 20 doy each 
 ```{r}
 # Constants
 my_sd <- 10
-n_samples <- 27
-
+n_samples <- simu_100_max # the simu informed 
+x <- 20 # allow some wiggle room for doy that mu would be 
 # Vector to vary 
-mu1 <- c(79:152)
-mu2 <- c(200:335)
+mu1 <- (S.M-x):(S.M+x)
+mu2 <- (F.M-x):(F.M+x)
 
 indices <- c(round(mu1[length(mu1)/4]), round(mu1[length(mu1)/2]), round(mu1[length(mu1)/1]))
 
@@ -216,7 +318,7 @@ abs_dist_max <- max_dist_prior$abs_dist
 # Plot dip test results
 ggplot(df_merge) + 
   geom_point(mapping = aes(x = abs_dist , y = dip_value, alpha = 0.1)) +
-  geom_line(mapping = aes(x = abs_dist_max, y = dip_value)) +
+  #geom_line(mapping = aes(x = abs_dist_max, y = dip_value)) +
   theme_bw() + 
   ggtitle("Diptest Probability by Sample Size for Scenario A") +
   xlab("Absolute Distance ") + 
